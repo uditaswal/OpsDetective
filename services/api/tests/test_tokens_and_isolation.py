@@ -100,3 +100,19 @@ def test_compose_has_no_local_llm_inference() -> None:
     compose = (REPO / "infra" / "docker-compose.yml").read_text().lower()
     for banned in ("ollama", "llama.cpp", "vllm", "text-generation-inference"):
         assert banned not in compose
+
+
+def test_internal_verify_requires_key_and_rejects_revoked(env, monkeypatch) -> None:
+    from app.config import settings
+    client, engine, headers, service_id, _ = env
+    token_resp = client.post(f"/api/v1/services/{service_id}/tokens", headers=headers).json()
+    body = {"token": token_resp["token"]}
+    monkeypatch.setattr(settings, "internal_api_key", "")
+    assert client.post("/internal/v1/ingest/verify", json=body).status_code == 404
+    monkeypatch.setattr(settings, "internal_api_key", "k" * 16)
+    assert client.post("/internal/v1/ingest/verify", json=body).status_code == 403
+    ok = client.post("/internal/v1/ingest/verify", json=body, headers={"X-Internal-Key": "k" * 16})
+    assert ok.status_code == 200 and ok.json()["service_id"] == service_id
+    client.delete(f"/api/v1/services/{service_id}/tokens/{token_resp['id']}", headers=headers)
+    gone = client.post("/internal/v1/ingest/verify", json=body, headers={"X-Internal-Key": "k" * 16})
+    assert gone.status_code == 401

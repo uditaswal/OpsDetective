@@ -75,3 +75,11 @@ def verify_ingestion_token(db: Session, token: str) -> IngestionToken | None:
     if row is None or row.revoked_at is not None:
         return None
     return row
+
+
+def require_internal_key(x_internal_key: str | None = Header(default=None)) -> None:
+    """Guard for service-to-service routes on the private network."""
+    if not settings.internal_api_key:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    if not x_internal_key or not secrets.compare_digest(x_internal_key, settings.internal_api_key):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")

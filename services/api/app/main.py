@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.models import Admin, AuditEvent, IngestionToken, LoginSession, Project, Service, utcnow
-from app.schemas import LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
+from app.schemas import IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
 from app.scope import scoped_select
 from app.security import (create_session, current_session, digest, new_ingestion_token,
-                          require_csrf, verify_password)
+                          require_csrf, require_internal_key, verify_ingestion_token, verify_password)
 
 app = FastAPI(title="OpsDetective API", version="0.1.0", docs_url=None, redoc_url=None)
 attempts: dict[str, deque[datetime]] = defaultdict(deque)
@@ -202,3 +202,12 @@ def revoke_token(service_id: str, token_id: str, admin: Admin = Depends(require_
                           action="token.revoke", target_id=row.id))
         db.commit()
     return row
+
+
+@app.post("/internal/v1/ingest/verify", response_model=IngestVerifyOut,
+          dependencies=[Depends(require_internal_key)])
+def verify_ingest(body: IngestVerifyIn, db: Session = Depends(get_db)) -> IngestVerifyOut:
+    row = verify_ingestion_token(db, body.token)
+    if row is None:
+        raise HTTPException(401, "Invalid or revoked token")
+    return IngestVerifyOut(tenant_id=row.tenant_id, project_id=row.project_id, service_id=row.service_id)

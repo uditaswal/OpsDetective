@@ -43,3 +43,13 @@ class TokenOut(BaseModel):
 
 class TokenCreated(TokenOut):
     token: str
+
+
+class IngestVerifyIn(BaseModel):
+    token: str = Field(min_length=1, max_length=256)
+
+
+class IngestVerifyOut(BaseModel):
+    tenant_id: str
+    project_id: str
+    service_id: str
