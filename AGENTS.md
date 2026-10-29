@@ -16,7 +16,7 @@ These rules apply to every change in OpsDetective. The product requirements and 
 - Keep functions typed and focused, handle failures explicitly, and add meaningful tests for behavior changes. Run lint, typecheck, tests, and builds that are available; report unavailable checks.
 - Prefer maintained dependencies with pinned versions and lockfiles. Do not bypass pre-commit or CI checks. Keep Dependabot, CodeQL, and secret scanning enabled once configured.
 - Make small reviewable commits with clear messages. Do not include `Co-Authored-By` or any AI attribution in commits or repository content. Do not push directly to a protected branch.
-- Record implementation decisions, completed work, checks, and remaining gate items in `docs/docs-internal/pplan.md` after each change.
+- Record implementation decisions, completed work, checks, and remaining gate items in `docs/docs-internal/plan.md` after each change.
 
 ## Interface and documentation
 
@@ -26,8 +26,8 @@ These rules apply to every change in OpsDetective. The product requirements and 
 
 ## Assistant handoff
 
-- Before starting work, read `docs/COPILOT_HANDOFF.md` (current status, non-negotiables, ordered next tasks) and, when present locally, `docs/docs-internal/OpsDetective_Merged_Spec_v1.2.md`. GitHub Copilot reads `.github/copilot-instructions.md`, which points here.
+- Before starting work, read `docs/docs-internal/handoff.md` (local only; current status, non-negotiables, ordered next tasks) and, when present locally, `docs/docs-internal/OpsDetective_Merged_Spec_v1.2.md`. GitHub Copilot reads `.github/copilot-instructions.md`, which points here.
 - The merged spec supersedes the two v1.1 source documents. Where it disagrees with older text, follow the merged spec.
 - The Debian host never runs Ollama, model weights, or inference containers. AI is free-first through cloud APIs behind a privacy gate; project data goes only to providers with documented no-training and retention terms. Detection and alerting must not depend on an AI provider.
 - Every table carries `tenant_id`; telemetry-derived tables also carry `project_id`. Read tenant-owned data through `services/api/app/scope.py` and add a cross-project test for each new entity.
-- When you finish work, update `docs/COPILOT_HANDOFF.md` (status and next tasks) and `docs/docs-internal/pplan.md`.
+- When you finish work, update `docs/docs-internal/handoff.md` (status and next tasks) and `docs/docs-internal/plan.md`.

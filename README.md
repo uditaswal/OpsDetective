@@ -29,7 +29,7 @@ Run `scripts/record-hardware.sh` on the target server and record the output here
 
 ## Ingestion tokens
 
-`POST /api/v1/services/{id}/tokens` returns a token once; only a keyed digest is stored. `GET` lists metadata and `DELETE /api/v1/services/{id}/tokens/{token_id}` revokes. Collector enforcement is not yet wired (see `docs/COPILOT_HANDOFF.md`), so keep OTLP ports on a trusted network.
+`POST /api/v1/services/{id}/tokens` returns a token once; only a keyed digest is stored. `GET` lists metadata and `DELETE /api/v1/services/{id}/tokens/{token_id}` revokes. Collector enforcement is not yet wired (see the local handoff note), so keep OTLP ports on a trusted network.
 
 ## Security notes
 
