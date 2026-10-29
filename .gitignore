@@ -1,3 +1,16 @@
+docs/docs-internal/
+.env*
+!.env.example
+**/.env*
+!**/.env.example
+node_modules/
+.next/
+*.tsbuildinfo
+dist/
+coverage/
+logs/
+.taste-skill/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
