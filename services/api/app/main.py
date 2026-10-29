@@ -1,0 +1,154 @@
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
+
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.db import get_db
+from app.models import Admin, AuditEvent, LoginSession, Project, Service
+from app.schemas import LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut
+from app.security import create_session, current_session, digest, require_csrf, verify_password
+
+app = FastAPI(title="OpsDetective API", version="0.1.0", docs_url=None, redoc_url=None)
+attempts: dict[str, deque[datetime]] = defaultdict(deque)
+
+
+@app.exception_handler(HTTPException)
+async def http_problem(request: Request, exc: HTTPException) -> JSONResponse:
+    title = {401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+             409: "Conflict", 429: "Too Many Requests"}.get(exc.status_code, "Request failed")
+    return JSONResponse(status_code=exc.status_code, media_type="application/problem+json",
+                        content={"type": "about:blank", "title": title,
+                                 "status": exc.status_code, "detail": str(exc.detail)})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_problem(request: Request, exc: RequestValidationError) -> JSONResponse:
+    fields = [{"field": ".".join(str(part) for part in error["loc"]),
+               "reason": error["type"]} for error in exc.errors()]
+    return JSONResponse(status_code=422, media_type="application/problem+json",
+                        content={"type": "about:blank", "title": "Validation failed",
+                                 "status": 422, "detail": "Check the submitted fields", "fields": fields})
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    length = request.headers.get("content-length")
+    if length:
+        try:
+            if int(length) > 1_048_576:
+                return JSONResponse(status_code=413, content={"detail": "Request too large"})
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/api/v1/auth/login")
+def login(body: LoginIn, response: Response, request: Request, db: Session = Depends(get_db)) -> dict[str, str]:
+    key = request.client.host if request.client else "unknown"
+    now = datetime.now(timezone.utc)
+    recent = attempts[key]
+    while recent and recent[0] < now - timedelta(minutes=1):
+        recent.popleft()
+    if len(recent) >= 5:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Try again later")
+    recent.append(now)
+    admin = db.scalar(select(Admin).where(Admin.email == body.email))
+    if admin is None or not verify_password(admin.password_hash, body.password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    recent.clear()
+    token, csrf = create_session(db, admin)
+    response.set_cookie("session_token", token, httponly=True, secure=settings.secure_cookies,
+                        samesite="lax", max_age=8 * 3600, path="/")
+    response.set_cookie("csrf_token", csrf, httponly=False, secure=settings.secure_cookies,
+                        samesite="lax", max_age=8 * 3600, path="/")
+    db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                      action="auth.login", target_id=admin.id))
+    db.commit()
+    return {"csrf_token": csrf}
+
+
+@app.get("/api/v1/auth/me")
+def me(auth: tuple[Admin, LoginSession] = Depends(current_session)) -> dict[str, str]:
+    return {"email": auth[0].email, "tenant_id": auth[0].tenant_id}
+
+
+@app.post("/api/v1/auth/logout")
+def logout(response: Response, admin: Admin = Depends(require_csrf),
+           db: Session = Depends(get_db), session_token: str | None = Cookie(default=None)) -> dict[str, str]:
+    if session_token:
+        row = db.get(LoginSession, digest(session_token))
+        if row is not None:
+            db.delete(row)
+    response.delete_cookie("session_token", path="/")
+    response.delete_cookie("csrf_token", path="/")
+    db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                      action="auth.logout", target_id=admin.id))
+    db.commit()
+    return {"status": "signed_out"}
+
+
+@app.get("/api/v1/projects", response_model=list[ProjectOut])
+def list_projects(admin: tuple[Admin, LoginSession] = Depends(current_session),
+                  db: Session = Depends(get_db)) -> list[Project]:
+    return list(db.scalars(select(Project).where(Project.tenant_id == admin[0].tenant_id)
+                           .order_by(Project.created_at.desc()).limit(100)))
+
+
+@app.post("/api/v1/projects", response_model=ProjectOut, status_code=201)
+def create_project(body: ProjectIn, admin: Admin = Depends(require_csrf),
+                   db: Session = Depends(get_db)) -> Project:
+    project = Project(tenant_id=admin.tenant_id, name=body.name.strip())
+    db.add(project)
+    try:
+        db.flush()
+        db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                          action="project.create", target_id=project.id))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Project already exists") from None
+    return project
+
+
+@app.get("/api/v1/services", response_model=list[ServiceOut])
+def list_services(admin: tuple[Admin, LoginSession] = Depends(current_session),
+                  db: Session = Depends(get_db)) -> list[Service]:
+    return list(db.scalars(select(Service).where(Service.tenant_id == admin[0].tenant_id)
+                           .order_by(Service.created_at.desc()).limit(100)))
+
+
+@app.post("/api/v1/services", response_model=ServiceOut, status_code=201)
+def create_service(body: ServiceIn, admin: Admin = Depends(require_csrf),
+                   db: Session = Depends(get_db)) -> Service:
+    project = db.scalar(select(Project).where(Project.id == body.project_id,
+                                               Project.tenant_id == admin.tenant_id))
+    if project is None:
+        raise HTTPException(404, "Project not found")
+    service = Service(tenant_id=admin.tenant_id, project_id=project.id,
+                      name=body.name.strip(), environment=body.environment)
+    db.add(service)
+    try:
+        db.flush()
+        db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                          action="service.create", target_id=service.id))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Service already exists") from None
+    return service
