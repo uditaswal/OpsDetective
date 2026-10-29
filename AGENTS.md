@@ -23,3 +23,11 @@ These rules apply to every change in OpsDetective. The product requirements and 
 - Use accessible labels, focus states, keyboard navigation, clear validation, responsive layouts, and honest empty/loading/error states. Do not invent usage metrics, testimonials, legal facts, or customer claims.
 - Add legal and trust pages before public launch using user-supplied company facts. Gate nonessential tracking on consent. Add production SEO, monitoring, and performance checks when public pages are introduced.
 - Document every environment variable, service, data flow, and operating limit. Keep production defaults secure; Docker socket access belongs only in the documented development profile.
+
+## Assistant handoff
+
+- Before starting work, read `docs/COPILOT_HANDOFF.md` (current status, non-negotiables, ordered next tasks) and, when present locally, `docs/docs-internal/OpsDetective_Merged_Spec_v1.2.md`. GitHub Copilot reads `.github/copilot-instructions.md`, which points here.
+- The merged spec supersedes the two v1.1 source documents. Where it disagrees with older text, follow the merged spec.
+- The Debian host never runs Ollama, model weights, or inference containers. AI is free-first through cloud APIs behind a privacy gate; project data goes only to providers with documented no-training and retention terms. Detection and alerting must not depend on an AI provider.
+- Every table carries `tenant_id`; telemetry-derived tables also carry `project_id`. Read tenant-owned data through `services/api/app/scope.py` and add a cross-project test for each new entity.
+- When you finish work, update `docs/COPILOT_HANDOFF.md` (status and next tasks) and `docs/docs-internal/pplan.md`.

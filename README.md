@@ -23,6 +23,14 @@ The API lives in `services/api`, the worker in `services/worker`, the demo app i
 
 See [foundation architecture](docs/architecture.md) for service boundaries, data flow, and the current trust model.
 
+## Host hardware
+
+Run `scripts/record-hardware.sh` on the target server and record the output here before claiming any hardware minimum. Recorded on the development machine on 2026-10-30: Intel Core i3-5005U (4 threads), 3.7 GiB RAM, about 786 GB free disk, Linux 6.12 (Debian). This host must not run local LLM inference; all model calls go to cloud APIs or an optional remote workstation. A core-profile benchmark is due in M2.
+
+## Ingestion tokens
+
+`POST /api/v1/services/{id}/tokens` returns a token once; only a keyed digest is stored. `GET` lists metadata and `DELETE /api/v1/services/{id}/tokens/{token_id}` revokes. Collector enforcement is not yet wired (see `docs/COPILOT_HANDOFF.md`), so keep OTLP ports on a trusted network.
+
 ## Security notes
 
 The local stack is for development. The administrator password and session secret are read from `.env` at runtime and must never be committed. Login sessions use HttpOnly cookies and state-changing requests require a CSRF token. The deployment needs TLS and production ingress controls before it is exposed publicly.

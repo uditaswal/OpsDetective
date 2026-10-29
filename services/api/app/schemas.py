@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -28,3 +30,16 @@ class ServiceOut(BaseModel):
     name: str
     environment: str
     model_config = ConfigDict(from_attributes=True)
+
+
+class TokenOut(BaseModel):
+    id: str
+    service_id: str
+    prefix: str
+    created_at: datetime
+    revoked_at: datetime | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TokenCreated(TokenOut):
+    token: str

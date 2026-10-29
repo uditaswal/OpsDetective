@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.models import Admin, AuditEvent, LoginSession, Project, Service
-from app.schemas import LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut
-from app.security import create_session, current_session, digest, require_csrf, verify_password
+from app.models import Admin, AuditEvent, IngestionToken, LoginSession, Project, Service, utcnow
+from app.schemas import LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
+from app.scope import scoped_select
+from app.security import (create_session, current_session, digest, new_ingestion_token,
+                          require_csrf, verify_password)
 
 app = FastAPI(title="OpsDetective API", version="0.1.0", docs_url=None, redoc_url=None)
 attempts: dict[str, deque[datetime]] = defaultdict(deque)
@@ -152,3 +154,51 @@ def create_service(body: ServiceIn, admin: Admin = Depends(require_csrf),
         db.rollback()
         raise HTTPException(409, "Service already exists") from None
     return service
+
+
+def _owned_service(db: Session, admin: Admin, service_id: str) -> Service:
+    service = db.scalar(scoped_select(Service, admin.tenant_id).where(Service.id == service_id))
+    if service is None:
+        raise HTTPException(404, "Service not found")
+    return service
+
+
+@app.post("/api/v1/services/{service_id}/tokens", response_model=TokenCreated, status_code=201)
+def create_token(service_id: str, admin: Admin = Depends(require_csrf),
+                 db: Session = Depends(get_db)) -> TokenCreated:
+    service = _owned_service(db, admin, service_id)
+    token = new_ingestion_token()
+    row = IngestionToken(tenant_id=admin.tenant_id, project_id=service.project_id,
+                         service_id=service.id, token_hash=digest(token), prefix=token[:8])
+    db.add(row)
+    db.flush()
+    db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                      action="token.create", target_id=row.id))
+    db.commit()
+    return TokenCreated(id=row.id, service_id=row.service_id, prefix=row.prefix,
+                        created_at=row.created_at, revoked_at=None, token=token)
+
+
+@app.get("/api/v1/services/{service_id}/tokens", response_model=list[TokenOut])
+def list_tokens(service_id: str, auth: tuple[Admin, LoginSession] = Depends(current_session),
+                db: Session = Depends(get_db)) -> list[IngestionToken]:
+    service = _owned_service(db, auth[0], service_id)
+    stmt = scoped_select(IngestionToken, auth[0].tenant_id, service.project_id)
+    return list(db.scalars(stmt.where(IngestionToken.service_id == service.id)
+                           .order_by(IngestionToken.created_at.desc()).limit(100)))
+
+
+@app.delete("/api/v1/services/{service_id}/tokens/{token_id}", response_model=TokenOut)
+def revoke_token(service_id: str, token_id: str, admin: Admin = Depends(require_csrf),
+                 db: Session = Depends(get_db)) -> IngestionToken:
+    service = _owned_service(db, admin, service_id)
+    row = db.scalar(scoped_select(IngestionToken, admin.tenant_id, service.project_id)
+                    .where(IngestionToken.id == token_id, IngestionToken.service_id == service.id))
+    if row is None:
+        raise HTTPException(404, "Token not found")
+    if row.revoked_at is None:
+        row.revoked_at = utcnow()
+        db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                          action="token.revoke", target_id=row.id))
+        db.commit()
+    return row

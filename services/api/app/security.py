@@ -5,11 +5,12 @@ from datetime import datetime, timedelta, timezone
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Cookie, Depends, Header, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.config import settings
-from app.models import Admin, LoginSession
+from app.models import Admin, IngestionToken, LoginSession
 
 hasher = PasswordHasher()
 
@@ -57,3 +58,20 @@ def require_csrf(
     if not csrf_token or not secrets.compare_digest(digest(csrf_token), auth[1].csrf_hash):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid CSRF token")
     return auth[0]
+
+
+TOKEN_PREFIX = "opd_"
+
+
+def new_ingestion_token() -> str:
+    return TOKEN_PREFIX + secrets.token_urlsafe(32)
+
+
+def verify_ingestion_token(db: Session, token: str) -> IngestionToken | None:
+    """Return the active token row for a presented bearer token, else None."""
+    if not token.startswith(TOKEN_PREFIX):
+        return None
+    row = db.scalar(select(IngestionToken).where(IngestionToken.token_hash == digest(token)))
+    if row is None or row.revoked_at is not None:
+        return None
+    return row
