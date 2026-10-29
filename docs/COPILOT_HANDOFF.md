@@ -4,7 +4,7 @@ Read `AGENTS.md` first; its rules bind every tool. This file is the working brie
 
 ## Where things stand (2026-10-30)
 
-- **M0 Foundation**: built and verified locally (Compose healthy, login, tests). The CI gate is pending: `dev` is pushed but its GitHub Actions result has not been checked. Do not start claiming M1 complete until M0 CI is green.
+- **M0 Foundation**: complete. Compose healthy, login works, CI and CodeQL green on `dev` (2026-10-30). Merging `dev` into `main` via PR is still open.
 - **M1 Monitor, first slice done**: per-service ingestion tokens (create once / list / revoke, keyed digest, audit events), the `app/scope.py` tenant/project guard, cross-project tests, a no-local-LLM compose test, a threat model, and `scripts/record-hardware.sh`.
 - The merged product spec (PRD v1.1 + Architecture plan v1.1) is `docs/docs-internal/OpsDetective_Merged_Spec_v1.2.md` and the change log is `docs/docs-internal/pplan.md`. Both are Git-ignored and local-only. If you cannot read them, the summary below is enough.
 
@@ -29,7 +29,7 @@ Read `AGENTS.md` first; its rules bind every tool. This file is the working brie
 
 ## Next tasks, in order
 
-1. `dev` is pushed. Check the GitHub Actions run, fix anything red, then merge to `main` via PR after the M0 gate.
+1. Open a PR from `dev` to `main` (M0 gate passed; CI green). Do not push directly to `main`.
 2. **Decide how the Collector enforces tokens** (see merged spec section 7, open item 1). The hash-only storage cannot be rendered into Collector bearer-auth config. Recommended: a small verifying gateway using `verify_ingestion_token`. Implement, then add an integration test where a revoked token is rejected.
 3. Demo app: traffic generator, `/orders`, structured JSON logs, 500 and slow-DB faults behind `DEMO_FAULTS_ENABLED` with admin auth and rate limit. OpenTelemetry SDK instrumentation.
 4. Add `node-exporter` and `blackbox-exporter` to the core compose stack; probe targets pass the SSRF allowlist.
