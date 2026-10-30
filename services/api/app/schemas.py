@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,3 +54,8 @@ class IngestVerifyOut(BaseModel):
     tenant_id: str
     project_id: str
     service_id: str
+
+
+class DemoFaultIn(BaseModel):
+    mode: Literal["off", "http_500", "slow_db"]
+    duration_seconds: int = Field(default=60, ge=5, le=120)

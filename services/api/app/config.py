@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     secure_cookies: bool = False
     tenant_id: str = "local"
     internal_api_key: str = ""
+    demo_faults_enabled: bool = False
+    demo_control_key: str = ""
 
     model_config = SettingsConfigDict(env_file=None)
 

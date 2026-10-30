@@ -12,10 +12,12 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r services/api/requirements-dev.txt
-      - run: ruff check services/api services/demo-app services/gateway scripts/compose-revocation.py
+      - run: ruff check services/api services/demo-app services/gateway scripts/compose-revocation.py scripts/compose-demo.py
       - run: PYTHONPATH=services/api SESSION_SECRET=test-session-key-only pytest -q services/api/tests
       - run: pip install -r services/gateway/requirements.txt
       - run: pytest -q services/gateway/tests
+      - run: pip install -r services/demo-app/requirements.txt
+      - run: PYTHONPATH=services/demo-app pytest -q services/demo-app/tests
       - run: python -m compileall -q services
   web:
     runs-on: ubuntu-latest
@@ -39,8 +41,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker compose --env-file .env.example -f infra/docker-compose.yml config --quiet
       - run: bash scripts/create-test-env.sh "$RUNNER_TEMP/opsdetective-ci.env"
-      - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci up --build -d --wait --wait-timeout 180 postgres api collector gateway
+      - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci up --build -d --wait --wait-timeout 180 postgres api collector gateway demo-app prometheus
       - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci exec -T api python - < scripts/compose-revocation.py
+      - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci exec -T api python - < scripts/compose-demo.py
       - if: always()
         run: |
           if [ -f "$RUNNER_TEMP/opsdetective-ci.env" ]; then

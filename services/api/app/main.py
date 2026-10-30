@@ -1,6 +1,9 @@
+import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 
+import httpx
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -11,13 +14,15 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.models import Admin, AuditEvent, IngestionToken, LoginSession, Project, Service, utcnow
-from app.schemas import IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
+from app.schemas import DemoFaultIn, IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
 from app.scope import scoped_select
 from app.security import (create_session, current_session, digest, new_ingestion_token,
                           require_csrf, require_internal_key, verify_ingestion_token, verify_password)
 
 app = FastAPI(title="OpsDetective API", version="0.1.0", docs_url=None, redoc_url=None)
 attempts: dict[str, deque[datetime]] = defaultdict(deque)
+demo_fault_attempts: dict[str, deque[float]] = defaultdict(deque)
+demo_fault_attempts_lock = Lock()
 
 
 @app.exception_handler(HTTPException)
@@ -211,3 +216,32 @@ def verify_ingest(body: IngestVerifyIn, db: Session = Depends(get_db)) -> Ingest
     if row is None:
         raise HTTPException(401, "Invalid or revoked token")
     return IngestVerifyOut(tenant_id=row.tenant_id, project_id=row.project_id, service_id=row.service_id)
+
+
+@app.post("/api/v1/demo/faults", response_model=DemoFaultIn)
+def set_demo_fault(body: DemoFaultIn, admin: Admin = Depends(require_csrf),
+                   db: Session = Depends(get_db)) -> DemoFaultIn:
+    """Enable a bounded synthetic fault after administrator and CSRF checks."""
+    if not settings.demo_faults_enabled:
+        raise HTTPException(404, "Not found")
+    if not settings.demo_control_key:
+        raise HTTPException(503, "Demo control is unavailable")
+    now = time.monotonic()
+    with demo_fault_attempts_lock:
+        recent = demo_fault_attempts[admin.id]
+        while recent and recent[0] <= now - 60:
+            recent.popleft()
+        if len(recent) >= 3:
+            raise HTTPException(429, "Demo fault rate limit exceeded")
+        recent.append(now)
+    try:
+        response = httpx.post("http://demo-app:8001/internal/faults", json=body.model_dump(),
+                              headers={"X-Demo-Control-Key": settings.demo_control_key}, timeout=3)
+    except httpx.HTTPError:
+        raise HTTPException(503, "Demo service is unavailable") from None
+    if response.status_code != 200:
+        raise HTTPException(503, "Demo service rejected the fault")
+    db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
+                      action="demo.fault", target_id=admin.id))
+    db.commit()
+    return body

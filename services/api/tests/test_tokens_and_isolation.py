@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -116,3 +117,35 @@ def test_internal_verify_requires_key_and_rejects_revoked(env, monkeypatch) -> N
     client.delete(f"/api/v1/services/{service_id}/tokens/{token_resp['id']}", headers=headers)
     gone = client.post("/internal/v1/ingest/verify", json=body, headers={"X-Internal-Key": "k" * 16})
     assert gone.status_code == 401
+
+
+def test_demo_fault_control_requires_admin_csrf_flag_and_rate_limit(env, monkeypatch) -> None:
+    from app.config import settings
+    from app.main import demo_fault_attempts
+
+    client, engine, headers, _, _ = env
+    monkeypatch.setattr(settings, "demo_faults_enabled", False)
+    monkeypatch.setattr(settings, "demo_control_key", "test-demo-key")
+    demo_fault_attempts.clear()
+    body = {"mode": "http_500", "duration_seconds": 30}
+    with TestClient(app) as anonymous:
+        assert anonymous.post("/api/v1/demo/faults", json=body).status_code == 401
+    assert client.post("/api/v1/demo/faults", json=body).status_code == 403
+    assert client.post("/api/v1/demo/faults", json=body, headers=headers).status_code == 404
+
+    monkeypatch.setattr(settings, "demo_faults_enabled", True)
+    forwarded = []
+
+    def send(url, *, json, headers, timeout):
+        forwarded.append((url, json, headers, timeout))
+        return httpx.Response(200)
+
+    monkeypatch.setattr(httpx, "post", send)
+    assert client.post("/api/v1/demo/faults", json={"mode": "invalid"}, headers=headers).status_code == 422
+    for _ in range(3):
+        assert client.post("/api/v1/demo/faults", json=body, headers=headers).status_code == 200
+    assert client.post("/api/v1/demo/faults", json=body, headers=headers).status_code == 429
+    assert len(forwarded) == 3
+    assert all(call[2] == {"X-Demo-Control-Key": "test-demo-key"} for call in forwarded)
+    with Session(engine) as db:
+        assert len(list(db.scalars(select(AuditEvent).where(AuditEvent.action == "demo.fault")))) == 3
