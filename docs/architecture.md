@@ -9,13 +9,15 @@ flowchart LR
   API --> PG[(PostgreSQL)]
   Worker[RQ worker] --> Redis[(Redis)]
   Demo[Synthetic demo app] -->|/metrics scrape| Prom[(Prometheus)]
-  Instrumented[Instrumented apps] -->|OTLP 4317/4318| Collector[OpenTelemetry Collector]
+  Instrumented[Instrumented apps] -->|OTLP/HTTP 4318 + bearer| Gateway[Ingest gateway]
+  Gateway -->|verify token| API
+  Gateway --> Collector[OpenTelemetry Collector]
   Collector --> Nop[Discard in M0]
 ```
 
 ## Trust boundaries
 
-The browser is untrusted. The API validates request bodies, checks administrator sessions and CSRF tokens, and applies tenant filters to every entity query. The browser connects to the API through a same-origin web rewrite; PostgreSQL, Redis, Prometheus, and the API are not published to the host. Only the web port and Collector ingress are published. Collector ingress currently has no per-service token enforcement and discards received data, so it must remain on a trusted local network until M1 adds authentication and storage.
+The browser is untrusted. The API validates request bodies, checks administrator sessions and CSRF tokens, and applies tenant filters to every entity query. The browser connects to the API through a same-origin web rewrite; PostgreSQL, Redis, Prometheus, and the API are not published to the host. Only the web port and the ingest gateway (OTLP/HTTP 4318) are published. The gateway verifies each bearer token against the API's hashed records over the private network (internal key), then forwards to the Collector with server-stamped identity headers. The Collector is unpublished and currently discards received data until the M1 storage pipeline lands.
 
 The administrator password is hashed with Argon2id in PostgreSQL. Session tokens and CSRF tokens are hashed with a keyed digest before storage. The Compose `.env` file is excluded from Git and Docker build contexts. A separate production deployment must use HTTPS, secure cookies, protected network ingress, and a secret manager.
 
@@ -27,6 +29,7 @@ The administrator password is hashed with Argon2id in PostgreSQL. Session tokens
 | api | Authentication, projects, services, audit events | PostgreSQL |
 | worker | RQ queue consumer for future investigations | Redis job state |
 | demo-app | Synthetic `/healthz` and `/metrics` endpoint | None |
+| gateway | Bearer-token check and forwarding for OTLP/HTTP | None (15 s token cache) |
 | collector | OTLP receiver, M0 discard pipeline | None |
 | prometheus | Scrapes demo metrics every 15 seconds | Named volume, 30-day time retention |
 | postgres | Application records | Named volume |

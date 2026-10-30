@@ -12,8 +12,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r services/api/requirements-dev.txt
-      - run: ruff check services/api services/demo-app
+      - run: ruff check services/api services/demo-app services/gateway
       - run: PYTHONPATH=services/api SESSION_SECRET=test-session-key-only pytest -q services/api/tests
+      - run: pip install -r services/gateway/requirements.txt
+      - run: pytest -q services/gateway/tests
       - run: python -m compileall -q services
   web:
     runs-on: ubuntu-latest

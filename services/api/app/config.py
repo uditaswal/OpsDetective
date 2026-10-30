@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     session_secret: str = ""
     secure_cookies: bool = False
     tenant_id: str = "local"
+    internal_api_key: str = ""
 
     model_config = SettingsConfigDict(env_file=None)
 
