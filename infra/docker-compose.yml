@@ -36,6 +36,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       SECURE_COOKIES: "false"
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
+      DEMO_FAULTS_ENABLED: ${DEMO_FAULTS_ENABLED:-false}
+      DEMO_CONTROL_KEY: ${DEMO_CONTROL_KEY:?set DEMO_CONTROL_KEY}
     depends_on:
       postgres: {condition: service_healthy}
     healthcheck:
@@ -62,6 +64,13 @@ services:
     build:
       context: ..
       dockerfile: services/demo-app/Dockerfile
+    environment:
+      DEMO_FAULTS_ENABLED: ${DEMO_FAULTS_ENABLED:-false}
+      DEMO_CONTROL_KEY: ${DEMO_CONTROL_KEY:?set DEMO_CONTROL_KEY}
+      DEMO_TRAFFIC_ENABLED: ${DEMO_TRAFFIC_ENABLED:-true}
+      DEMO_TRAFFIC_INTERVAL_SECONDS: ${DEMO_TRAFFIC_INTERVAL_SECONDS:-2}
+      DEMO_INGEST_TOKEN: ${DEMO_INGEST_TOKEN:-}
+      DEMO_GATEWAY_URL: http://gateway:4318
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz', timeout=3)"]
       interval: 10s
@@ -103,7 +112,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.3.0
-    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus

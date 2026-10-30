@@ -8,7 +8,7 @@ OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collecto
 
 - **Service control plane:** administrator sign-in, project and service registration, tenant-scoped records, and audit events.
 - **Authenticated ingest:** create-once service tokens, keyed-digest storage, revocation, and an OTLP/HTTP gateway that verifies each bearer token before forwarding to the private Collector.
-- **Synthetic telemetry:** a demo service exposes health and Prometheus metrics without requiring customer data.
+- **Synthetic telemetry:** a demo service generates order requests and exposes health and Prometheus metrics without requiring customer data.
 - **Operational checks:** GitHub Actions runs Python and web checks, Compose integration, secret scanning, and CodeQL. The integration check exercises token creation, accepted ingest, revocation, and rejection after the gateway cache expires.
 
 ## Run locally
