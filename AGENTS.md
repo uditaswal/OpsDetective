@@ -20,6 +20,7 @@ These rules apply to every change in OpsDetective. The product requirements and 
 
 ## Interface and documentation
 
+- Treat `README.md` as a recruiter-facing project overview. Lead with implemented capabilities, concise setup, and architecture; keep milestone gaps and plans in `docs/docs-internal`. Describe current behavior accurately without presenting planned features as working.
 - Use accessible labels, focus states, keyboard navigation, clear validation, responsive layouts, and honest empty/loading/error states. Do not invent usage metrics, testimonials, legal facts, or customer claims.
 - Add legal and trust pages before public launch using user-supplied company facts. Gate nonessential tracking on consent. Add production SEO, monitoring, and performance checks when public pages are introduced.
 - Document every environment variable, service, data flow, and operating limit. Keep production defaults secure; Docker socket access belongs only in the documented development profile.
