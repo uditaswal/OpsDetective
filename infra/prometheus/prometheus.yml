@@ -14,3 +14,10 @@ scrape_configs:
       - targets: ["probe-gateway:9116"]
         labels:
           instance: demo-app-health
+  - job_name: otlp
+    sample_limit: 20000
+    label_limit: 32
+    label_name_length_limit: 128
+    label_value_length_limit: 256
+    static_configs:
+      - targets: ["collector:8889"]

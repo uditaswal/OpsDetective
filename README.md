@@ -2,12 +2,13 @@
 
 **A self-hosted observability project with authenticated OpenTelemetry intake and tenant-scoped service administration.**
 
-OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collector, Prometheus, PostgreSQL, Redis, and a synthetic demo service together in one Docker Compose stack. The current runnable flow focuses on service setup, access control, and telemetry intake.
+OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collector, Prometheus, PostgreSQL, Redis, and a synthetic demo service together in one Docker Compose stack. The current runnable flow focuses on service setup, access control, and telemetry intake and metric storage.
 
 ## What you can explore
 
 - **Service control plane:** administrator sign-in, project and service registration, tenant-scoped records, and audit events.
 - **Authenticated ingest:** create-once service tokens, keyed-digest storage, revocation, and an OTLP/HTTP gateway that verifies each bearer token before forwarding to the private Collector.
+- **Private metric storage:** authenticated OTLP metrics retain tenant, project and service identity in Prometheus. Host metrics and a restricted demo uptime probe run in the core stack.
 - **Synthetic telemetry:** a demo service generates order requests and exposes health and Prometheus metrics without requiring customer data.
 - **Operational checks:** GitHub Actions runs Python and web checks, Compose integration, secret scanning, and CodeQL. The integration check exercises token creation, accepted ingest, revocation, and rejection after the gateway cache expires.
 

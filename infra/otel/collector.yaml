@@ -1,16 +1,53 @@
 receivers:
   otlp:
     protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+        include_metadata: true
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
+  resource/identity:
+    attributes:
+      - key: tenant_id
+        action: delete
+      - key: project_id
+        action: delete
+      - key: service_id
+        action: delete
+      - key: tenant_id
+        action: insert
+        from_context: metadata.x-opd-tenant-id
+      - key: project_id
+        action: insert
+        from_context: metadata.x-opd-project-id
+      - key: service_id
+        action: insert
+        from_context: metadata.x-opd-service-id
+  transform/identity:
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(resource.attributes, ["tenant_id", "project_id", "service_id"])
+      - context: datapoint
+        statements:
+          - delete_matching_keys(datapoint.attributes, "(?i)^(tenant.*id|project.*id|service.*id|opd.*)$")
+          - set(datapoint.attributes["tenant_id"], resource.attributes["tenant_id"])
+          - set(datapoint.attributes["project_id"], resource.attributes["project_id"])
+          - set(datapoint.attributes["service_id"], resource.attributes["service_id"])
+  filter/identity:
+    error_mode: propagate
+    metrics:
+      datapoint:
+        - 'attributes["tenant_id"] == nil or attributes["project_id"] == nil or attributes["service_id"] == nil'
   batch: {}
 exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    send_timestamps: true
+    metric_expiration: 60s
   nop: {}
 extensions:
   health_check:
@@ -20,13 +57,13 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [nop]
+      processors: [memory_limiter, resource/identity, transform/identity, filter/identity, batch]
+      exporters: [prometheus]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/identity, batch]
       exporters: [nop]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource/identity, batch]
       exporters: [nop]

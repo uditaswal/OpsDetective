@@ -12,7 +12,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r services/api/requirements-dev.txt
-      - run: ruff check services/api services/demo-app services/gateway scripts/compose-revocation.py scripts/compose-demo.py scripts/compose-otel-export.py scripts/compose-exporters.py
+      - run: ruff check services/api services/demo-app services/gateway scripts/compose-revocation.py scripts/compose-demo.py scripts/compose-otel-export.py scripts/compose-exporters.py scripts/compose-metric-isolation.py
       - run: PYTHONPATH=services/api SESSION_SECRET=test-session-key-only pytest -q services/api/tests
       - run: pip install -r services/gateway/requirements.txt
       - run: pytest -q services/gateway/tests
@@ -45,6 +45,7 @@ jobs:
       - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci exec -T api python - < scripts/compose-revocation.py
       - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci exec -T api python - < scripts/compose-demo.py
       - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci exec -T api python - < scripts/compose-exporters.py
+      - run: docker compose --env-file "$RUNNER_TEMP/opsdetective-ci.env" -f infra/docker-compose.yml -p opsdetective-ci exec -T api python - < scripts/compose-metric-isolation.py
       - run: python3 scripts/compose-otel-export.py --env-file "$RUNNER_TEMP/opsdetective-ci.env" --project opsdetective-ci
       - if: always()
         run: |
