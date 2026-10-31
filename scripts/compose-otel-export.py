@@ -38,8 +38,30 @@ service = post('/api/v1/services', {'project_id': project['id'],
                                     'name': 'Synthetic demo', 'environment': 'demo'}, csrf)
 token = post('/api/v1/services/' + service['id'] + '/tokens', {}, csrf)
 print(json.dumps({'token': token['token'], 'token_id': token['id'],
-                  'service_id': service['id']}))
+                  'service_id': service['id'], 'project_id': project['id']}))
 """
+
+STORED_METRICS = """
+import json
+import time
+from urllib.parse import urlencode
+from urllib.request import urlopen
+
+query = '{job="otlp",service_id="' + SERVICE_ID + '",project_id="' + PROJECT_ID + '"}'
+deadline = time.monotonic() + 45
+while time.monotonic() < deadline:
+    with urlopen('http://prometheus:9090/api/v1/query?' + urlencode({'query': query}), timeout=5) as response:
+        rows = json.load(response)['data']['result']
+    names = {row['metric']['__name__'] for row in rows}
+    counter = any(name.startswith('demo_http_requests') and name.endswith('_total') for name in names)
+    histogram = any(name.startswith('demo_http_duration') and name.endswith('_bucket') for name in names)
+    if counter and histogram:
+        break
+    time.sleep(2)
+else:
+    raise AssertionError('Registered demo counter and histogram were not persisted with scoped labels')
+"""
+
 
 REVOKE = """
 import json
@@ -94,7 +116,13 @@ def main() -> None:
             metrics_ok = any('POST /v1/metrics HTTP/1.1" 200' in line for line in logs.splitlines())
             traces_ok = any('POST /v1/traces HTTP/1.1" 200' in line for line in logs.splitlines())
             if metrics_ok and traces_ok:
-                print("Compose demo OTLP metrics and traces accepted through gateway and Collector")
+                stored = (f"SERVICE_ID = {created['service_id']!r}\n"
+                          f"PROJECT_ID = {created['project_id']!r}\n" + STORED_METRICS)
+                checked = subprocess.run([*compose, "exec", "-T", "api", "python", "-"],
+                                         input=stored, text=True, capture_output=True, check=False)
+                if checked.returncode != 0:
+                    raise AssertionError("Registered demo metrics were not persisted in Prometheus")
+                print("Compose demo metrics stored with scoped labels; traces accepted through Collector")
                 return
             time.sleep(2)
         raise AssertionError("Demo metrics and traces did not both reach the Collector within 60 seconds")

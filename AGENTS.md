@@ -15,6 +15,7 @@ These rules apply to every change in OpsDetective. The product requirements and 
 - Respect milestone gates in the PRD. Do not present a later-milestone stub as a completed feature.
 - Keep functions typed and focused, handle failures explicitly, and add meaningful tests for behavior changes. Run lint, typecheck, tests, and builds that are available; report unavailable checks.
 - Prefer maintained dependencies with pinned versions and lockfiles. Do not bypass pre-commit or CI checks. Keep Dependabot, CodeQL, and secret scanning enabled once configured.
+- Use `feature/` branches. Once a branch passes its checks, merge it into `dev` and delete the completed branch.
 - Make small reviewable commits with clear messages. Do not include `Co-Authored-By` or any AI attribution in commits or repository content. Do not push directly to a protected branch.
 - Record implementation decisions, completed work, checks, and remaining gate items in `docs/docs-internal/plan.md` after each change.
 
