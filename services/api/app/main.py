@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.health_routes import router as health_router
 from app.db import get_db
 from app.models import Admin, AuditEvent, IngestionToken, LoginSession, Project, Service, utcnow
 from app.schemas import DemoFaultIn, IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
@@ -20,6 +21,7 @@ from app.security import (create_session, current_session, digest, new_ingestion
                           require_csrf, require_internal_key, verify_ingestion_token, verify_password)
 
 app = FastAPI(title="OpsDetective API", version="0.1.0", docs_url=None, redoc_url=None)
+app.include_router(health_router)
 attempts: dict[str, deque[datetime]] = defaultdict(deque)
 demo_fault_attempts: dict[str, deque[float]] = defaultdict(deque)
 demo_fault_attempts_lock = Lock()
@@ -56,7 +58,10 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
-    response.headers["Cache-Control"] = "no-store"
+    response.headers["Cache-Control"] = (
+        "no-store, no-transform" if response.headers.get("Content-Type", "").startswith("text/event-stream")
+        else "no-store"
+    )
     return response
 
 
@@ -113,7 +118,7 @@ def logout(response: Response, admin: Admin = Depends(require_csrf),
 @app.get("/api/v1/projects", response_model=list[ProjectOut])
 def list_projects(admin: tuple[Admin, LoginSession] = Depends(current_session),
                   db: Session = Depends(get_db)) -> list[Project]:
-    return list(db.scalars(select(Project).where(Project.tenant_id == admin[0].tenant_id)
+    return list(db.scalars(scoped_select(Project, admin[0].tenant_id)
                            .order_by(Project.created_at.desc()).limit(100)))
 
 
@@ -136,19 +141,18 @@ def create_project(body: ProjectIn, admin: Admin = Depends(require_csrf),
 @app.get("/api/v1/services", response_model=list[ServiceOut])
 def list_services(admin: tuple[Admin, LoginSession] = Depends(current_session),
                   db: Session = Depends(get_db)) -> list[Service]:
-    return list(db.scalars(select(Service).where(Service.tenant_id == admin[0].tenant_id)
+    return list(db.scalars(scoped_select(Service, admin[0].tenant_id)
                            .order_by(Service.created_at.desc()).limit(100)))
 
 
 @app.post("/api/v1/services", response_model=ServiceOut, status_code=201)
 def create_service(body: ServiceIn, admin: Admin = Depends(require_csrf),
                    db: Session = Depends(get_db)) -> Service:
-    project = db.scalar(select(Project).where(Project.id == body.project_id,
-                                               Project.tenant_id == admin.tenant_id))
+    project = db.scalar(scoped_select(Project, admin.tenant_id).where(Project.id == body.project_id))
     if project is None:
         raise HTTPException(404, "Project not found")
     service = Service(tenant_id=admin.tenant_id, project_id=project.id,
-                      name=body.name.strip(), environment=body.environment)
+                      name=body.name.strip(), environment=body.environment, probe_name=body.probe_name)
     db.add(service)
     try:
         db.flush()

@@ -7,6 +7,7 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -36,8 +37,11 @@ def configure_telemetry(token: str, gateway_url: str) -> DemoTelemetry:
             OTLPSpanExporter(endpoint=f"{gateway_url}/v1/traces", headers=headers, timeout=3)))
         readers.append(PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint=f"{gateway_url}/v1/metrics", headers=headers, timeout=3),
-            export_interval_millis=15_000))
-    meter_provider = MeterProvider(resource=resource, metric_readers=readers)
+            export_interval_millis=10_000))
+    meter_provider = MeterProvider(resource=resource, metric_readers=readers, views=[
+        View(instrument_name="demo.http.duration", aggregation=ExplicitBucketHistogramAggregation(
+            boundaries=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10))),
+    ])
     meter = meter_provider.get_meter("opsdetective.demo")
     return DemoTelemetry(
         tracer_provider=tracer_provider,

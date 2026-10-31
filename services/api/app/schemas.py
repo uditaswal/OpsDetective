@@ -17,6 +17,7 @@ class ServiceIn(BaseModel):
     project_id: str
     name: str = Field(min_length=1, max_length=120, pattern=r"^[\w .-]+$")
     environment: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    probe_name: Literal["demo"] | None = None
 
 
 class ProjectOut(BaseModel):
@@ -30,6 +31,7 @@ class ServiceOut(BaseModel):
     project_id: str
     name: str
     environment: str
+    probe_name: Literal["demo"] | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -1,24 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { api, csrfToken } from "./api-client";
+import { HealthPanel } from "./health-panel";
 
 type Project = { id: string; name: string };
 type Service = { id: string; project_id: string; name: string; environment: string };
-
-function csrfToken(): string {
-  const item = document.cookie.split("; ").find((part) => part.startsWith("csrf_token="));
-  return item ? decodeURIComponent(item.split("=")[1]) : "";
-}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, { credentials: "same-origin", cache: "no-store", ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`);
-  }
-  return response.json();
-}
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -33,10 +20,12 @@ export default function Home() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const [demoProbe, setDemoProbe] = useState(false);
 
   async function refresh() {
     const [p, s] = await Promise.all([api<Project[]>("/projects"), api<Service[]>("/services")]);
-    setProjects(p); setServices(s); setProjectId((current) => current || p[0]?.id || "");
+    setProjects(p); setServices(s); setRevision((n) => n + 1); setProjectId((current) => current || p[0]?.id || "");
   }
 
   useEffect(() => {
@@ -67,7 +56,7 @@ export default function Home() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       await api("/services", { method: "POST", headers: { "X-CSRF-Token": csrfToken() },
-        body: JSON.stringify({ project_id: projectId, name: serviceName, environment }) });
+        body: JSON.stringify({ project_id: projectId, name: serviceName, environment, probe_name: demoProbe ? "demo" : null }) });
       setServiceName(""); await refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not create service"); }
     finally { setBusy(false); }
@@ -96,16 +85,18 @@ export default function Home() {
   return <div className="shell"><aside><div className="brand"><span className="mark-symbol" aria-hidden="true">◉</span> OpsDetective</div>
     <nav aria-label="Main"><a href="#overview" aria-current="page">Overview</a><a href="#projects">Projects</a><a href="#services">Services</a></nav>
     <button className="quiet" onClick={signOut} disabled={busy}>Sign out</button></aside>
-    <main id="overview"><header><div><h1>Overview</h1><p className="muted">Foundation workspace · local tenant</p></div><span className="status">M0 setup</span></header>
+    <main id="overview"><header><div><h1>Overview</h1><p className="muted">Service monitoring workspace</p></div></header>
       {error && <p role="alert" className="error">{error}</p>}
-      <section className="summary" aria-label="Workspace summary"><div><span>Projects</span><strong>{projects.length}</strong></div><div><span>Registered services</span><strong>{services.length}</strong></div><div><span>Telemetry status</span><strong className="unknown">Not connected</strong></div></section>
+      <section className="summary" aria-label="Workspace summary"><div><span>Projects</span><strong>{projects.length}</strong></div><div><span>Registered services</span><strong>{services.length}</strong></div><div><span>Signal source</span><strong className="source-name">OpenTelemetry</strong></div></section>
+      <HealthPanel projects={projects} revision={revision} />
       <div className="columns"><section id="projects"><h2>Projects</h2><p className="muted">Group the services you plan to monitor.</p>
         <form onSubmit={addProject}><label htmlFor="project-name">Project name</label><div className="inline"><input id="project-name" required maxLength={120} value={projectName} onChange={(e) => setProjectName(e.target.value)} /><button disabled={busy}>Add project</button></div></form>
         <ul>{projects.map((p) => <li key={p.id}>{p.name}</li>)}</ul>{projects.length === 0 && <p className="empty">No projects yet. Add one to register a service.</p>}</section>
-        <section id="services"><h2>Services</h2><p className="muted">Registration is available; telemetry connection arrives in M1.</p>
+        <section id="services"><h2>Services</h2><p className="muted">Register a service before connecting its telemetry.</p>
           <form onSubmit={addService}><label htmlFor="service-project">Project</label><select id="service-project" required value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
             <label htmlFor="service-name">Service name</label><input id="service-name" required maxLength={120} value={serviceName} onChange={(e) => setServiceName(e.target.value)} />
             <label htmlFor="environment">Environment</label><input id="environment" required maxLength={64} value={environment} onChange={(e) => setEnvironment(e.target.value)} />
+            <label className="checkbox"><input type="checkbox" checked={demoProbe} onChange={(e) => setDemoProbe(e.target.checked)} />Assign the fixed synthetic demo uptime probe</label>
             <button disabled={busy || projects.length === 0}>Add service</button></form>
           <ul>{services.map((s) => <li key={s.id}><span>{s.name}</span><small>{s.environment}</small></li>)}</ul>{services.length === 0 && <p className="empty">No registered services.</p>}</section></div>
     </main></div>;

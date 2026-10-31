@@ -1,20 +1,21 @@
 # OpsDetective
 
-**A self-hosted observability project with authenticated OpenTelemetry intake and tenant-scoped service administration.**
+**A self-hosted observability project with authenticated telemetry, service health, and tenant-scoped administration.**
 
-OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collector, Prometheus, PostgreSQL, Redis, and a synthetic demo service together in one Docker Compose stack. The current runnable flow focuses on service setup, access control, and telemetry intake and metric storage.
+OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collector, Prometheus, PostgreSQL, Redis, and a synthetic demo service together in one Docker Compose stack. The current runnable flow focuses on service setup, access control, and telemetry intake, metric storage, and service monitoring.
 
 ## What you can explore
 
 - **Service control plane:** administrator sign-in, project and service registration, tenant-scoped records, and audit events.
 - **Authenticated ingest:** create-once service tokens, keyed-digest storage, revocation, and an OTLP/HTTP gateway that verifies each bearer token before forwarding to the private Collector.
 - **Private metric storage:** authenticated OTLP metrics retain tenant, project and service identity in Prometheus. Host metrics and a restricted demo uptime probe run in the core stack.
+- **Service health:** project-scoped cards show request rate, 5xx errors, bucket-approximated latency p95, uptime probes and freshness. Collection failures appear separately, with live updates and polling fallback.
 - **Synthetic telemetry:** a demo service generates order requests and exposes health and Prometheus metrics without requiring customer data.
 - **Operational checks:** GitHub Actions runs Python and web checks, Compose integration, secret scanning, and CodeQL. The integration check exercises token creation, accepted ingest, revocation, and rejection after the gateway cache expires.
 
 ## Run locally
 
-Prerequisites: Docker Engine with Compose, about 4 GB of available memory, and free ports 3000 and 4318.
+Prerequisites: a Linux host, Docker Engine with Compose, and free ports 3000 and 4318.
 
 1. Copy `.env.example` to `.env` and replace every `change-me` value with a private value.
 2. Start the stack:

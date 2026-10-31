@@ -47,6 +47,7 @@ class Service(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     environment: Mapped[str] = mapped_column(String(64))
+    probe_name: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (UniqueConstraint("tenant_id", "project_id", "name", "environment"),)
 

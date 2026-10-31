@@ -38,6 +38,10 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
       DEMO_FAULTS_ENABLED: ${DEMO_FAULTS_ENABLED:-false}
       DEMO_CONTROL_KEY: ${DEMO_CONTROL_KEY:?set DEMO_CONTROL_KEY}
+      PROMETHEUS_URL: http://prometheus:9090
+      HEALTH_STALE_SECONDS: ${HEALTH_STALE_SECONDS:-60}
+      HEALTH_ERROR_RATE_PERCENT: ${HEALTH_ERROR_RATE_PERCENT:-5}
+      HEALTH_LATENCY_P95_MS: ${HEALTH_LATENCY_P95_MS:-500}
     depends_on:
       postgres: {condition: service_healthy}
     healthcheck:
@@ -126,6 +130,11 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:9100/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks: [private]
 
   probe-gateway:
@@ -138,6 +147,11 @@ services:
     user: "101:101"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:9116/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks: [private]
 
   blackbox-exporter:
@@ -148,10 +162,16 @@ services:
     volumes:
       - ./blackbox/config.yml:/etc/blackbox/config.yml:ro
     network_mode: service:probe-gateway
-    depends_on: [probe-gateway]
+    depends_on:
+      probe-gateway: {condition: service_healthy}
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:9115/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   prometheus:
     image: prom/prometheus:v3.3.0
