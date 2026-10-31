@@ -110,6 +110,49 @@ services:
       retries: 10
     networks: [private]
 
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --collector.loadavg
+      - --collector.diskstats
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [private]
+
+  probe-gateway:
+    image: nginx:1.28.0-alpine
+    entrypoint: [nginx, -g, "daemon off;"]
+    volumes:
+      - ./blackbox/nginx.conf:/etc/nginx/nginx.conf:ro
+    read_only: true
+    tmpfs: [/tmp]
+    user: "101:101"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [private]
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.26.0
+    command:
+      - --config.file=/etc/blackbox/config.yml
+      - --web.listen-address=127.0.0.1:9115
+    volumes:
+      - ./blackbox/config.yml:/etc/blackbox/config.yml:ro
+    network_mode: service:probe-gateway
+    depends_on: [probe-gateway]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
   prometheus:
     image: prom/prometheus:v3.3.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]

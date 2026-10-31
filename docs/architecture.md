@@ -9,6 +9,11 @@ flowchart LR
   API --> PG[(PostgreSQL)]
   Worker[RQ worker] --> Redis[(Redis)]
   Demo[Synthetic demo app] -->|/metrics scrape| Prom[(Prometheus)]
+  Host[Host proc/sys read-only] --> Node[node-exporter]
+  Node -->|CPU, memory, load, disk counters| Prom
+  Prom -->|fixed /probe/demo| Probe[Probe gateway]
+  Probe -->|loopback only| Blackbox[blackbox-exporter]
+  Blackbox -->|GET, no redirects| Demo
   Demo -->|synthetic /orders traffic| Demo
   API -->|admin-controlled fault + private key| Demo
   Demo -->|optional OTLP/HTTP + service token| Gateway
@@ -49,10 +54,21 @@ Faults are disabled by default. When enabled, an administrator uses `POST /api/v
 | demo-app | Synthetic `/orders` traffic, faults, JSON logs, `/healthz`, and `/metrics` | None |
 | gateway | Bearer-token check and forwarding for OTLP/HTTP | None (15 s token cache) |
 | collector | OTLP receiver, M0 discard pipeline | None |
-| prometheus | Scrapes demo metrics every 15 seconds | Named volume, 15-day time retention |
+| node-exporter | Host CPU, memory, load and disk counters via read-only `/proc` and `/sys` | None |
+| probe-gateway | Fixed allowlist route to the loopback-only blackbox listener | None |
+| blackbox-exporter | Five-second HTTP probe of demo `/healthz`, redirects disabled | None |
+| prometheus | Scrapes demo, host and availability metrics every 15 seconds | Named volume, 15-day time retention |
 | postgres | Application records | Named volume |
 | redis | Short-lived queue data | Named volume |
 
 ## Data contract and versioning
 
 Application records use UUID string IDs and tenant IDs from the first migration. `Project` owns `Service`; the API checks both the project ID and tenant ID before service creation. API routes are versioned under `/api/v1`. Schema changes require Alembic migrations and tests. Canonical logs, metric points, trace spans, baselines, incidents, and investigations are specified in the internal PRD and will be added by milestone.
+
+## Host metrics and restricted probes
+
+The Linux core stack mounts host `/proc` and `/sys` read-only into node-exporter. Only CPU, memory, load and disk-counter collectors are enabled. Filesystem capacity and host network-interface metrics are intentionally not collected: the container has neither a host root mount nor host network access. No Docker socket, privileged mode, host PID namespace or new environment variable is required. These infrastructure metrics stay in the private Prometheus instance; they are not tenant-owned application records or exposed to browser users.
+
+Prometheus scrapes `node-exporter:9100` and `probe-gateway:9116/probe/demo` every 15 seconds. The probe gateway accepts only GET with no query string on that fixed route, and constructs a constant blackbox request for `http://demo-app:8001/healthz`. It forwards no caller headers or body. All other paths are denied except its own `/healthz`. Blackbox listens on loopback port 9115 in the gateway's network namespace, so other containers cannot bypass the allowlist. Probe timeout is five seconds; redirects are disabled, IPv4 is required, and only HTTP 200 succeeds. This checks process health; synthetic order faults do not make `/healthz` fail.
+
+No arbitrary URL registration is implemented. Adding a destination requires a reviewed fixed gateway route and matching Prometheus scrape configuration, including explicit approval for any private service target. Do not expose the raw blackbox port or replace the constant upstream URL with request arguments. Exporter ports are unpublished. Prometheus retains the samples for 15 days. Run `scripts/compose-exporters.py` inside the API test container to verify metric ingestion, successful probing and denial of alternate targets.

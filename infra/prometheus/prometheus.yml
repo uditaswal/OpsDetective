@@ -4,3 +4,13 @@ scrape_configs:
   - job_name: demo-app
     static_configs:
       - targets: ["demo-app:8001"]
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
+  - job_name: demo-availability
+    metrics_path: /probe/demo
+    scrape_timeout: 8s
+    static_configs:
+      - targets: ["probe-gateway:9116"]
+        labels:
+          instance: demo-app-health
