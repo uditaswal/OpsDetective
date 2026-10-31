@@ -35,7 +35,7 @@ login = post('/api/v1/auth/login', {'email': os.environ['ADMIN_EMAIL'],
 csrf = login['csrf_token']
 project = post('/api/v1/projects', {'name': 'OTel export ' + uuid.uuid4().hex}, csrf)
 service = post('/api/v1/services', {'project_id': project['id'],
-                                    'name': 'Synthetic demo', 'environment': 'demo'}, csrf)
+                                    'name': 'Synthetic demo', 'environment': 'demo', 'probe_name': 'demo'}, csrf)
 token = post('/api/v1/services/' + service['id'] + '/tokens', {}, csrf)
 print(json.dumps({'token': token['token'], 'token_id': token['id'],
                   'service_id': service['id'], 'project_id': project['id']}))
@@ -60,6 +60,70 @@ while time.monotonic() < deadline:
     time.sleep(2)
 else:
     raise AssertionError('Registered demo counter and histogram were not persisted with scoped labels')
+"""
+
+
+SERVICE_HEALTH = """
+import json
+import os
+import time
+from http.cookiejar import CookieJar
+from urllib.error import HTTPError
+from urllib.request import HTTPCookieProcessor, Request, build_opener
+
+api = 'http://localhost:8000'
+opener = build_opener(HTTPCookieProcessor(CookieJar()))
+def call(path, body=None, csrf=''):
+    request = Request(api + path, data=json.dumps(body).encode() if body is not None else None,
+                      headers={'Content-Type': 'application/json', 'X-CSRF-Token': csrf})
+    with opener.open(request, timeout=5) as response:
+        return json.load(response)
+csrf = call('/api/v1/auth/login', {'email': os.environ['ADMIN_EMAIL'],
+                                   'password': os.environ['ADMIN_PASSWORD']})['csrf_token']
+def wait_for(predicate, seconds=60):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        data = call('/api/v1/services/' + SERVICE_ID + '/health')
+        if predicate(data):
+            return data
+        time.sleep(2)
+    raise AssertionError('Service health state: ' + data['status'] + ' / collection: ' + data['collection_status'])
+
+def set_fault(mode):
+    deadline = time.monotonic() + 65
+    while True:
+        try:
+            return call('/api/v1/demo/faults', {'mode': mode, 'duration_seconds': 60}, csrf)
+        except HTTPError as error:
+            if error.code != 429 or time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
+
+if EXPECT_COLLECTION_FAILURE:
+    data = wait_for(lambda row: row['collection_status'] == 'unavailable', 30)
+    assert data['status'] == 'disconnected'
+    assert data['availability'] is None and data['error_rate_percent'] is None
+else:
+    data = wait_for(lambda row: row['status'] == 'healthy')
+    assert data['collection_status'] == 'connected' and data['availability'] is True, 'Configured probe or collection was not available'
+    assert data['request_rate_per_minute'] > 0 and data['latency_p95_ms'] < 500
+    started = time.monotonic()
+    call('/api/v1/projects/' + PROJECT_ID + '/health')
+    assert time.monotonic() - started < 2, 'Dashboard health request exceeded two seconds'
+    with opener.open(api + '/api/v1/projects/' + PROJECT_ID + '/health/stream', timeout=5) as response:
+        assert response.headers['Content-Type'].startswith('text/event-stream')
+        while True:
+            line = response.readline().decode()
+            if line.startswith('data: '):
+                event = json.loads(line[6:])
+                assert any(row['id'] == SERVICE_ID for row in event['services'])
+                break
+    try:
+        set_fault('http_500')
+        data = wait_for(lambda row: row['status'] == 'degraded' and row['error_rate_percent'] >= 5)
+        assert data['collection_status'] == 'connected' and data['availability'] is True, 'Configured probe or collection was not available'
+    finally:
+        set_fault('off')
 """
 
 
@@ -122,7 +186,26 @@ def main() -> None:
                                          input=stored, text=True, capture_output=True, check=False)
                 if checked.returncode != 0:
                     raise AssertionError("Registered demo metrics were not persisted in Prometheus")
-                print("Compose demo metrics stored with scoped labels; traces accepted through Collector")
+                health_script = (f"SERVICE_ID = {created['service_id']!r}\n"
+                                 f"PROJECT_ID = {created['project_id']!r}\n")
+                checked = subprocess.run([*compose, "exec", "-T", "api", "python", "-"],
+                    input=health_script + "EXPECT_COLLECTION_FAILURE = False\n" + SERVICE_HEALTH,
+                    text=True, capture_output=True, check=False)
+                if checked.returncode != 0:
+                    detail = next((line for line in checked.stderr.splitlines()
+                                   if line.startswith("AssertionError:")), "request failed")
+                    raise AssertionError(f"Live service health check failed: {detail}")
+                try:
+                    subprocess.run([*compose, "stop", "collector"], check=True, capture_output=True)
+                    checked = subprocess.run([*compose, "exec", "-T", "api", "python", "-"],
+                        input=health_script + "EXPECT_COLLECTION_FAILURE = True\n" + SERVICE_HEALTH,
+                        text=True, capture_output=True, check=False)
+                    if checked.returncode != 0:
+                        raise AssertionError("Collection outage was not separated from application health")
+                finally:
+                    subprocess.run([*compose, "up", "-d", "--wait", "--wait-timeout", "60", "collector"],
+                                   check=True, capture_output=True)
+                print("Compose SDK storage, healthy/degraded signals, SSE and collection outage checks passed")
                 return
             time.sleep(2)
         raise AssertionError("Demo metrics and traces did not both reach the Collector within 60 seconds")
