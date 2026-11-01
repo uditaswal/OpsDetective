@@ -13,9 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.health_routes import router as health_router
+from app.health import snapshot
+from app.rate_limit import limit_action
 from app.db import get_db
 from app.models import Admin, AuditEvent, IngestionToken, LoginSession, Project, Service, utcnow
-from app.schemas import DemoFaultIn, IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
+from app.schemas import ConnectionTestIn, ConnectionTestOut, DemoFaultIn, IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
 from app.scope import scoped_select
 from app.security import (create_session, current_session, digest, new_ingestion_token,
                           require_csrf, require_internal_key, verify_ingestion_token, verify_password)
@@ -176,6 +178,7 @@ def _owned_service(db: Session, admin: Admin, service_id: str) -> Service:
 def create_token(service_id: str, admin: Admin = Depends(require_csrf),
                  db: Session = Depends(get_db)) -> TokenCreated:
     service = _owned_service(db, admin, service_id)
+    limit_action(admin.id, "token.create")
     token = new_ingestion_token()
     row = IngestionToken(tenant_id=admin.tenant_id, project_id=service.project_id,
                          service_id=service.id, token_hash=digest(token), prefix=token[:8])
@@ -205,12 +208,42 @@ def revoke_token(service_id: str, token_id: str, admin: Admin = Depends(require_
                     .where(IngestionToken.id == token_id, IngestionToken.service_id == service.id))
     if row is None:
         raise HTTPException(404, "Token not found")
+    limit_action(admin.id, "token.revoke")
     if row.revoked_at is None:
         row.revoked_at = utcnow()
         db.add(AuditEvent(tenant_id=admin.tenant_id, actor_id=admin.id,
                           action="token.revoke", target_id=row.id))
         db.commit()
     return row
+
+
+@app.post("/api/v1/services/{service_id}/connection-test", response_model=ConnectionTestOut)
+def test_connection(service_id: str, body: ConnectionTestIn, admin: Admin = Depends(require_csrf),
+                    db: Session = Depends(get_db)) -> ConnectionTestOut:
+    service = _owned_service(db, admin, service_id)
+    limit_action(admin.id, "service.connection_test")
+    ref = ServiceOut.model_validate(service)
+    active = db.scalar(scoped_select(IngestionToken, admin.tenant_id, service.project_id)
+                       .where(IngestionToken.service_id == service.id, IngestionToken.revoked_at.is_(None)).limit(1))
+    tenant_id = admin.tenant_id
+    db.add(AuditEvent(tenant_id=tenant_id, actor_id=admin.id,
+                      action="service.connection_test", target_id=service.id))
+    db.commit()
+    if active is None:
+        return ConnectionTestOut(service_id=ref.id, project_id=ref.project_id, status="waiting",
+                                 checked_at=utcnow(), detail="Create an active ingestion token before connecting this service.")
+    observed = snapshot(tenant_id, ref.project_id, [ref])
+    health = observed.services[0]
+    state = health.collection_status
+    result_status = "connected" if state == "connected" else state
+    detail = {
+        "connected": "Fresh request metrics are stored for this service. Check service health for application status.",
+        "waiting": "No recent request metrics for this service. Check the SDK endpoint, token and instrument names, then retry.",
+        "stale": "Stored request metrics are stale. Check that the SDK is still exporting, then retry.",
+        "unavailable": health.reasons[0] if health.reasons else "Collection is unavailable. Restore collection before retrying.",
+    }[state]
+    return ConnectionTestOut(service_id=ref.id, project_id=ref.project_id, status=result_status,
+                             checked_at=observed.observed_at, last_seen_at=health.last_seen_at, detail=detail)
 
 
 @app.post("/internal/v1/ingest/verify", response_model=IngestVerifyOut,

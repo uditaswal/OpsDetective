@@ -10,10 +10,12 @@ class LoginIn(BaseModel):
 
 
 class ProjectIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     name: str = Field(min_length=1, max_length=120, pattern=r"^[\w .-]+$")
 
 
 class ServiceIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     project_id: str
     name: str = Field(min_length=1, max_length=120, pattern=r"^[\w .-]+$")
     environment: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -61,3 +63,16 @@ class IngestVerifyOut(BaseModel):
 class DemoFaultIn(BaseModel):
     mode: Literal["off", "http_500", "slow_db"]
     duration_seconds: int = Field(default=60, ge=5, le=120)
+
+
+class ConnectionTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConnectionTestOut(BaseModel):
+    service_id: str
+    project_id: str
+    status: Literal["connected", "waiting", "stale", "unavailable"]
+    checked_at: datetime
+    last_seen_at: datetime | None = None
+    detail: str

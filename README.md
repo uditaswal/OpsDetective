@@ -7,6 +7,7 @@ OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collecto
 ## What you can explore
 
 - **Service control plane:** administrator sign-in, project and service registration, tenant-scoped records, and audit events.
+- **Guided connections:** register a service, manage create-once ingestion tokens, configure its SDK, and verify received request metrics from the interface.
 - **Authenticated ingest:** create-once service tokens, keyed-digest storage, revocation, and an OTLP/HTTP gateway that verifies each bearer token before forwarding to the private Collector.
 - **Private metric storage:** authenticated OTLP metrics retain tenant, project and service identity in Prometheus. Host metrics and a restricted demo uptime probe run in the core stack.
 - **Service health:** project-scoped cards show request rate, 5xx errors, bucket-approximated latency p95, uptime probes and freshness. Collection failures appear separately, with live updates and polling fallback.
@@ -25,7 +26,8 @@ Prerequisites: a Linux host, Docker Engine with Compose, and free ports 3000 and
    ```
 
 3. Open `http://localhost:3000` and sign in with the administrator credentials from `.env`.
-4. Check service health:
+4. Choose **Connect a service**, register the included synthetic demo, and create an ingestion token. Save it privately as `DEMO_INGEST_TOKEN` in `.env`, then recreate the demo using the command shown in setup. Choose **Test connection** to verify stored request metrics, then open service health.
+5. Check container readiness:
 
    ```bash
    docker compose --env-file .env -f infra/docker-compose.yml ps

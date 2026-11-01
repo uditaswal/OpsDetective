@@ -1,11 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { api, csrfToken } from "./api-client";
+import { api, ApiError, csrfToken, SESSION_EXPIRED_EVENT } from "./api-client";
+import { ServiceSetup } from "./service-setup";
+import type { Project, Service } from "./service-types";
 import { HealthPanel } from "./health-panel";
-
-type Project = { id: string; name: string };
-type Service = { id: string; project_id: string; name: string; environment: string };
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -14,24 +13,32 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [projectName, setProjectName] = useState("");
-  const [serviceName, setServiceName] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [environment, setEnvironment] = useState("development");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
-  const [demoProbe, setDemoProbe] = useState(false);
+  const [healthProjectId, setHealthProjectId] = useState("");
 
   async function refresh() {
     const [p, s] = await Promise.all([api<Project[]>("/projects"), api<Service[]>("/services")]);
-    setProjects(p); setServices(s); setRevision((n) => n + 1); setProjectId((current) => current || p[0]?.id || "");
+    setProjects(p); setServices(s); setRevision((n) => n + 1);
   }
 
   useEffect(() => {
     api<{ email: string }>("/auth/me").then(() => { setSignedIn(true); return refresh(); })
       .catch(() => setSignedIn(false)).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    const expired = () => { setSignedIn(false); setProjects([]); setServices([]); setError("Your session ended. Sign in again."); };
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expired);
+  }, []);
+
+  async function refreshAfterChange() {
+    try { await refresh(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "The record was saved, but the list could not refresh. Reload to see it."); }
+  }
 
   async function signIn(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
@@ -52,28 +59,18 @@ export default function Home() {
     finally { setBusy(false); }
   }
 
-  async function addService(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      await api("/services", { method: "POST", headers: { "X-CSRF-Token": csrfToken() },
-        body: JSON.stringify({ project_id: projectId, name: serviceName, environment, probe_name: demoProbe ? "demo" : null }) });
-      setServiceName(""); await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not create service"); }
-    finally { setBusy(false); }
-  }
-
   async function signOut() {
     setBusy(true); setError("");
     try { await api("/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken() } });
       setSignedIn(false); setProjects([]); setServices([]); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not sign out"); }
+    catch (cause) { if (!(cause instanceof ApiError && cause.status === 401)) setError(cause instanceof Error ? cause.message : "Could not sign out"); }
     finally { setBusy(false); }
   }
 
   if (loading) return <main className="center"><p>Checking session…</p></main>;
   if (!signedIn) return <main className="center"><div className="login">
     <p className="mark">OpsDetective</p><h1>Sign in</h1>
-    <p className="muted">The incident workspace is ready for its first service.</p>
+    <p className="muted">Sign in to monitor your services.</p>
     <form onSubmit={signIn}><label htmlFor="email">Administrator email</label>
       <input id="email" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
       <label htmlFor="password">Password</label>
@@ -88,16 +85,10 @@ export default function Home() {
     <main id="overview"><header><div><h1>Overview</h1><p className="muted">Service monitoring workspace</p></div></header>
       {error && <p role="alert" className="error">{error}</p>}
       <section className="summary" aria-label="Workspace summary"><div><span>Projects</span><strong>{projects.length}</strong></div><div><span>Registered services</span><strong>{services.length}</strong></div><div><span>Signal source</span><strong className="source-name">OpenTelemetry</strong></div></section>
-      <HealthPanel projects={projects} revision={revision} />
+      <HealthPanel projects={projects} revision={revision} selectedProjectId={healthProjectId} onProjectChange={setHealthProjectId} />
       <div className="columns"><section id="projects"><h2>Projects</h2><p className="muted">Group the services you plan to monitor.</p>
         <form onSubmit={addProject}><label htmlFor="project-name">Project name</label><div className="inline"><input id="project-name" required maxLength={120} value={projectName} onChange={(e) => setProjectName(e.target.value)} /><button disabled={busy}>Add project</button></div></form>
         <ul>{projects.map((p) => <li key={p.id}>{p.name}</li>)}</ul>{projects.length === 0 && <p className="empty">No projects yet. Add one to register a service.</p>}</section>
-        <section id="services"><h2>Services</h2><p className="muted">Register a service before connecting its telemetry.</p>
-          <form onSubmit={addService}><label htmlFor="service-project">Project</label><select id="service-project" required value={projectId} onChange={(e) => setProjectId(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <label htmlFor="service-name">Service name</label><input id="service-name" required maxLength={120} value={serviceName} onChange={(e) => setServiceName(e.target.value)} />
-            <label htmlFor="environment">Environment</label><input id="environment" required maxLength={64} value={environment} onChange={(e) => setEnvironment(e.target.value)} />
-            <label className="checkbox"><input type="checkbox" checked={demoProbe} onChange={(e) => setDemoProbe(e.target.checked)} />Assign the fixed synthetic demo uptime probe</label>
-            <button disabled={busy || projects.length === 0}>Add service</button></form>
-          <ul>{services.map((s) => <li key={s.id}><span>{s.name}</span><small>{s.environment}</small></li>)}</ul>{services.length === 0 && <p className="empty">No registered services.</p>}</section></div>
+        <ServiceSetup projects={projects} services={services} onChanged={refreshAfterChange} onViewHealth={setHealthProjectId} /></div>
     </main></div>;
 }
