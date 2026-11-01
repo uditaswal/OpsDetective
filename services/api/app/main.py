@@ -7,7 +7,6 @@ import httpx
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,7 +18,7 @@ from app.rate_limit import limit_action
 from app.db import get_db
 from app.models import Admin, AuditEvent, IngestionToken, LoginSession, Project, Service, utcnow
 from app.schemas import ConnectionTestIn, ConnectionTestOut, DemoFaultIn, IngestVerifyIn, IngestVerifyOut, LoginIn, ProjectIn, ProjectOut, ServiceIn, ServiceOut, TokenCreated, TokenOut
-from app.scope import scoped_select
+from app.scope import login_select, scoped_select
 from app.security import (create_session, current_session, digest, new_ingestion_token,
                           require_csrf, require_internal_key, verify_ingestion_token, verify_password)
 
@@ -84,7 +83,7 @@ def login(body: LoginIn, response: Response, request: Request, db: Session = Dep
     if len(recent) >= 5:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Try again later")
     recent.append(now)
-    admin = db.scalar(select(Admin).where(Admin.email == body.email))
+    admin = db.scalar(login_select(body.email))
     if admin is None or not verify_password(admin.password_hash, body.password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     recent.clear()
@@ -108,7 +107,7 @@ def me(auth: tuple[Admin, LoginSession] = Depends(current_session)) -> dict[str,
 def logout(response: Response, admin: Admin = Depends(require_csrf),
            db: Session = Depends(get_db), session_token: str | None = Cookie(default=None)) -> dict[str, str]:
     if session_token:
-        row = db.get(LoginSession, digest(session_token))
+        row = db.scalar(scoped_select(LoginSession, admin.tenant_id).where(LoginSession.token_hash == digest(session_token)))
         if row is not None:
             db.delete(row)
     response.delete_cookie("session_token", path="/")
