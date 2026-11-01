@@ -6,9 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app tests playwright.config.ts next.config.ts eslint.config.mjs",
+    "lint": "eslint app tests scripts playwright.config.ts next.config.ts eslint.config.mjs",
     "typecheck": "tsc --noEmit",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:artifact-safety": "node scripts/check-browser-artifacts.mjs"
   },
   "dependencies": {
     "next": "16.4.3",

@@ -5,12 +5,12 @@ from datetime import datetime, timedelta, timezone
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Cookie, Depends, Header, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.config import settings
 from app.models import Admin, IngestionToken, LoginSession
+from app.scope import credential_select, scoped_select
 
 hasher = PasswordHasher()
 
@@ -29,7 +29,7 @@ def verify_password(password_hash: str, password: str) -> bool:
 def create_session(db: Session, admin: Admin) -> tuple[str, str]:
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     db.add(LoginSession(
-        token_hash=digest(token), admin_id=admin.id, csrf_hash=digest(csrf),
+        token_hash=digest(token), tenant_id=admin.tenant_id, admin_id=admin.id, csrf_hash=digest(csrf),
         expires_at=datetime.now(timezone.utc) + timedelta(hours=8),
     ))
     db.commit()
@@ -42,10 +42,10 @@ def current_session(
 ) -> tuple[Admin, LoginSession]:
     if not session_token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication required")
-    row = db.get(LoginSession, digest(session_token))
+    row = db.scalar(credential_select(LoginSession, digest(session_token)))
     if row is None or row.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
-    admin = db.get(Admin, row.admin_id)
+    admin = db.scalar(scoped_select(Admin, row.tenant_id).where(Admin.id == row.admin_id))
     if admin is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication required")
     return admin, row
@@ -71,7 +71,7 @@ def verify_ingestion_token(db: Session, token: str) -> IngestionToken | None:
     """Return the active token row for a presented bearer token, else None."""
     if not token.startswith(TOKEN_PREFIX):
         return None
-    row = db.scalar(select(IngestionToken).where(IngestionToken.token_hash == digest(token)))
+    row = db.scalar(credential_select(IngestionToken, digest(token)))
     if row is None or row.revoked_at is not None:
         return None
     return row

@@ -27,7 +27,10 @@ export default function Home() {
 
   useEffect(() => {
     api<{ email: string }>("/auth/me").then(() => { setSignedIn(true); return refresh(); })
-      .catch(() => setSignedIn(false)).finally(() => setLoading(false));
+      .catch((cause) => {
+        setSignedIn(false);
+        if (!(cause instanceof ApiError && cause.status === 401)) setError("Session check is unavailable. Try signing in again.");
+      }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
