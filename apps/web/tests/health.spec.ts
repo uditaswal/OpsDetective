@@ -35,6 +35,7 @@ test("service health separates measured failures, collection failures and pollin
   const projectName = `Browser ${info.project.name} ${Date.now()}`;
   const project = await create("/projects", { name: projectName });
   const service = await create("/services", { project_id: project.id, name: "Synthetic orders", environment: "demo" });
+  await page.clock.install();
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   await page.locator("#health-project").selectOption(project.id);
@@ -62,9 +63,11 @@ test("service health separates measured failures, collection failures and pollin
   await expect(card.getByText("0%", { exact: true })).toBeVisible();
   await expect(card.getByText("Bucket-approximated", { exact: true })).toBeVisible();
   status = "degraded";
+  await page.clock.fastForward(10000);
   await expect(card.getByText("Degraded", { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(card.getByText("20%", { exact: true })).toBeVisible();
   status = "disconnected";
+  await page.clock.fastForward(10000);
   await expect(card.getByText("Disconnected", { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(card.getByText("Collection: Unavailable", { exact: true })).toBeVisible();
   await expect(card.getByText("Last seen: Unknown", { exact: true })).toBeVisible();
