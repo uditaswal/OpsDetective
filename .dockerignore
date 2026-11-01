@@ -1,4 +1,10 @@
 .git
+.taste-skill
+.impeccable
+**/.cache
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
 .env*
 !.env.example
 **/.env*

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.health_routes import router as health_router
+from app.host_routes import router as host_router
 from app.health import snapshot
 from app.rate_limit import limit_action
 from app.db import get_db
@@ -24,6 +25,7 @@ from app.security import (create_session, current_session, digest, new_ingestion
 
 app = FastAPI(title="OpsDetective API", version="0.1.0", docs_url=None, redoc_url=None)
 app.include_router(health_router)
+app.include_router(host_router)
 attempts: dict[str, deque[datetime]] = defaultdict(deque)
 demo_fault_attempts: dict[str, deque[float]] = defaultdict(deque)
 demo_fault_attempts_lock = Lock()

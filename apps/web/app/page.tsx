@@ -5,6 +5,7 @@ import { api, ApiError, csrfToken, SESSION_EXPIRED_EVENT } from "./api-client";
 import { ServiceSetup } from "./service-setup";
 import type { Project, Service } from "./service-types";
 import { HealthPanel } from "./health-panel";
+import { HostPanel } from "./host-panel";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -86,6 +87,7 @@ export default function Home() {
       {error && <p role="alert" className="error">{error}</p>}
       <section className="summary" aria-label="Workspace summary"><div><span>Projects</span><strong>{projects.length}</strong></div><div><span>Registered services</span><strong>{services.length}</strong></div><div><span>Signal source</span><strong className="source-name">OpenTelemetry</strong></div></section>
       <HealthPanel projects={projects} revision={revision} selectedProjectId={healthProjectId} onProjectChange={setHealthProjectId} />
+      <HostPanel projectId={projects.some((project) => project.id === healthProjectId) ? healthProjectId : projects[0]?.id ?? ""} />
       <div className="columns"><section id="projects"><h2>Projects</h2><p className="muted">Group the services you plan to monitor.</p>
         <form onSubmit={addProject}><label htmlFor="project-name">Project name</label><div className="inline"><input id="project-name" required maxLength={120} value={projectName} onChange={(e) => setProjectName(e.target.value)} /><button disabled={busy}>Add project</button></div></form>
         <ul>{projects.map((p) => <li key={p.id}>{p.name}</li>)}</ul>{projects.length === 0 && <p className="empty">No projects yet. Add one to register a service.</p>}</section>
