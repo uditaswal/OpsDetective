@@ -359,3 +359,13 @@ code { font-size:.9em; }
 .service-registry .quiet { margin:0; text-align:right; font-size:14px; flex-shrink:0; }
 .columns li { overflow-wrap:anywhere; }
 @media(max-width:800px) { .setup-title { flex-wrap:wrap; } }
+.host-panel { border:1px solid #e1e7e4; background:#fff; padding:24px; margin-bottom:24px; }
+.host-panel h2 { margin:0; font-size:20px; }
+.host-panel p { font-size:14px; line-height:1.6; }
+.host-panel code { overflow-wrap:anywhere; }
+.host-state { font-weight:600; }
+.host-signals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; margin:20px 0; }
+.host-signals dt,.host-signals small { font-size:14px; color:#566461; }
+.host-signals dd { margin:8px 0; font-size:26px; font-variant-numeric:tabular-nums; }
+.host-signals small { display:block; line-height:1.5; }
+@media(max-width:480px) { .host-panel { padding:20px; } .host-signals { gap:16px; } }
