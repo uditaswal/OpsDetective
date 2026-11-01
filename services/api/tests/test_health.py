@@ -225,3 +225,66 @@ def test_stream_expiry_http_headers_and_connection_limits(workspace, monkeypatch
         row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
         db.commit()
     assert client.get(f"/api/v1/projects/{projects[0]}/health/stream").status_code == 401
+
+
+def test_connection_requires_auth_csrf_active_token_and_ownership(workspace, monkeypatch):
+    client, _, projects, services = workspace
+    csrf = client.cookies["csrf_token"]
+    headers = {"X-CSRF-Token": csrf}
+    path = f"/api/v1/services/{services[0]}/connection-test"
+    calls = []
+    monkeypatch.setattr(health, "read_metrics", lambda query: calls.append(query) or vector(services[0]))
+    with TestClient(app) as anonymous:
+        assert anonymous.post(path, json={}).status_code == 401
+    assert client.post(path, json={}).status_code == 403
+    assert client.post(f"/api/v1/services/{services[2]}/connection-test", json={}, headers=headers).status_code == 404
+    assert client.post(path, json={"url": "http://169.254.169.254"}, headers=headers).status_code == 422
+    assert client.post(path, json={}, headers=headers).json()["status"] == "waiting"
+    assert not calls
+    created = client.post(f"/api/v1/services/{services[0]}/tokens", headers=headers)
+    assert created.status_code == 201
+    connected = client.post(path, json={}, headers=headers).json()
+    assert connected["status"] == "connected" and connected["last_seen_at"]
+    assert connected["project_id"] == projects[0]
+    assert projects[1] not in calls[0] and services[1] not in calls[0]
+    assert client.delete(f"/api/v1/services/{services[0]}/tokens/{created.json()['id']}", headers=headers).status_code == 200
+    calls.clear()
+    assert client.post(path, json={}, headers=headers).json()["status"] == "waiting"
+    assert not calls
+
+
+@pytest.mark.parametrize("rows,expected", [("empty", "waiting"), ("stale", "stale"), ("outage", "unavailable"), ("degraded", "connected")])
+def test_connection_checks_received_metrics_not_application_health(workspace, monkeypatch, rows, expected):
+    client, _, _, services = workspace
+    headers = {"X-CSRF-Token": client.cookies["csrf_token"]}
+    assert client.post(f"/api/v1/services/{services[0]}/tokens", headers=headers).status_code == 201
+    data = vector(services[0])[4:] if rows == "empty" else vector(services[0], age=90 if rows == "stale" else 1,
+            collector=0 if rows == "outage" else 1, errors=.1 if rows == "degraded" else 0)
+    monkeypatch.setattr(health, "read_metrics", lambda _: data)
+    result = client.post(f"/api/v1/services/{services[0]}/connection-test", json={}, headers=headers)
+    assert result.status_code == 200 and result.json()["status"] == expected
+
+
+def test_connection_and_token_creation_are_rate_limited(workspace, monkeypatch):
+    from app import rate_limit
+    client, _, _, services = workspace
+    headers = {"X-CSRF-Token": client.cookies["csrf_token"]}
+    monkeypatch.setattr(health, "read_metrics", lambda _: [])
+    for _ in range(10):
+        assert client.post(f"/api/v1/services/{services[0]}/tokens", headers=headers).status_code == 201
+    assert client.post(f"/api/v1/services/{services[0]}/tokens", headers=headers).status_code == 429
+    for _ in range(12):
+        assert client.post(f"/api/v1/services/{services[0]}/connection-test", json={}, headers=headers).status_code == 200
+    assert client.post(f"/api/v1/services/{services[0]}/connection-test", json={}, headers=headers).status_code == 429
+    now = rate_limit.monotonic()
+    monkeypatch.setattr(rate_limit, "monotonic", lambda: now + 61)
+    assert client.post(f"/api/v1/services/{services[0]}/connection-test", json={}, headers=headers).status_code == 200
+
+
+def test_registration_strips_names_and_rejects_whitespace(workspace):
+    client, _, projects, _ = workspace
+    headers = {"X-CSRF-Token": client.cookies["csrf_token"]}
+    assert client.post("/api/v1/projects", json={"name": "   "}, headers=headers).status_code == 422
+    assert client.post("/api/v1/services", json={"name": "   ", "project_id": projects[0], "environment": "test"}, headers=headers).status_code == 422
+    created = client.post("/api/v1/projects", json={"name": "  Trimmed  "}, headers=headers)
+    assert created.status_code == 201 and created.json()["name"] == "Trimmed"

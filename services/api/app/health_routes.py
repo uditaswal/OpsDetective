@@ -86,8 +86,8 @@ async def health_events(request: Request, factory: sessionmaker, token: str, pro
                 return
             try:
                 overview = await run_in_threadpool(stream_snapshot, factory, token, project_id)
-            except HTTPException:
-                yield 'event: access-lost\ndata: {}\n\n'
+            except HTTPException as error:
+                yield f'event: access-lost\ndata: {{"status": {error.status_code}}}\n\n'
                 return
             yield f"event: health\ndata: {overview.model_dump_json()}\n\n"
             if index + 1 < STREAM_SNAPSHOTS:
