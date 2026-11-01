@@ -1,3 +1,9 @@
+export const SESSION_EXPIRED_EVENT = "opsdetective:session-expired";
+
+export function expireSession() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
@@ -14,6 +20,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
   if (!response.ok) {
+    if (response.status === 401 && path !== "/auth/login") expireSession();
     const body = await response.json().catch(() => ({}));
     throw new ApiError(typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`, response.status);
   }

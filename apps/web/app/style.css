@@ -325,3 +325,37 @@ a { text-underline-offset:3px; }
 @container (min-width:700px) {
   .signals { grid-template-columns:repeat(4,minmax(0,1fr)); }
 }
+.setup-title { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+.setup-title p { margin:6px 0 0; }
+.setup-title .quiet { margin:0; padding:4px 0; white-space:nowrap; }
+.setup-title>button:not(.quiet) { flex-shrink:0; }
+.setup-progress { display:flex; flex-wrap:wrap; gap:12px 28px; padding-left:20px; margin:24px 0; color:#566461; font-size:14px; }
+.setup-progress [aria-current] { color:#172021; font-weight:600; }
+.registration h3,.token-setup h3 { font-size:18px; margin:0; overflow-wrap:anywhere; }
+.registration form { margin-top:20px; }
+.setup-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; }
+.setup-actions .quiet { margin:0; padding:8px 0; }
+.setup-actions a { font-size:14px; }
+.token-setup h4 { font-size:16px; margin:28px 0 8px; }
+.token-setup p { font-size:14px; line-height:1.6; }
+.token-setup .muted { overflow-wrap:anywhere; }
+.new-token { padding:16px; margin:20px 0; background:#edf2ef; }
+.new-token>p:first-child { margin-top:0; }
+.secret-value { overflow-wrap:anywhere; }
+pre { background:#f6f8f7; padding:14px; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.6; }
+code { font-size:.9em; }
+.columns .token-list { margin-top:20px; }
+.columns .token-list li { display:block; }
+.token-list li>div:first-child { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
+.token-list span { font-size:13px; color:#566461; }
+.token-list .quiet { margin:0; padding:8px 0; }
+.revoke-confirmation { margin-top:10px; }
+.connection-result { background:#f6f8f7; padding:16px; margin-top:18px; }
+.connection-result.connected { background:#dceae5; color:#175047; }
+.connection-result p { margin:8px 0 0; }
+.columns .service-registry li { align-items:center; gap:16px; }
+.service-registry li>div { min-width:0; overflow-wrap:anywhere; }
+.service-registry small { display:block; margin-top:5px; }
+.service-registry .quiet { margin:0; text-align:right; font-size:14px; flex-shrink:0; }
+.columns li { overflow-wrap:anywhere; }
+@media(max-width:800px) { .setup-title { flex-wrap:wrap; } }

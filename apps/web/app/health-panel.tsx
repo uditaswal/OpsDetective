@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, ApiError } from "./api-client";
+import { api, ApiError, expireSession } from "./api-client";
 
 type Project = { id: string; name: string };
 type ServiceHealth = {
@@ -88,7 +88,8 @@ function useHealth(projectId: string, revision: number) {
           accept(data);
         } catch { fallback(); }
       });
-      source.addEventListener("access-lost", () => {
+      source.addEventListener("access-lost", (event) => {
+        try { if (JSON.parse(event.data).status === 401) expireSession(); } catch { /* Access stays closed when the event cannot be read. */ }
         stopped = true;
         source?.close();
         clearTimeout(watchdog);
@@ -112,11 +113,10 @@ function number(value: number | null, suffix: string): string {
   return value === null ? "—" : `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${suffix}`;
 }
 
-export function HealthPanel({ projects, revision }: { projects: Project[]; revision: number }) {
-  const [selection, setSelection] = useState("");
+export function HealthPanel({ projects, revision, selectedProjectId, onProjectChange }: { projects: Project[]; revision: number; selectedProjectId: string; onProjectChange: (id: string) => void }) {
   const [retry, setRetry] = useState(0);
   const [now, setNow] = useState(0);
-  const projectId = projects.some((p) => p.id === selection) ? selection : projects[0]?.id ?? "";
+  const projectId = projects.some((p) => p.id === selectedProjectId) ? selectedProjectId : projects[0]?.id ?? "";
   const update = useHealth(projectId, revision + retry);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
@@ -129,14 +129,14 @@ export function HealthPanel({ projects, revision }: { projects: Project[]; revis
     update.mode === "live" ? "Live updates" : update.mode === "polling" ? "Polling every 10 seconds" : "Connecting live updates…";
 
   return <section className="health-section" aria-labelledby="health-heading">
-    <div className="section-heading"><div><h2 id="health-heading">Service health</h2>
+    <div className="section-heading"><div><h2 id="health-heading" tabIndex={-1}>Service health</h2>
       <p className="muted">Application signals and collection health, shown separately.</p></div>
       {projectId && <div className="health-actions"><span className="muted" role="status">{connection}</span>
         <button className="quiet" onClick={() => setRetry((n) => n + 1)}>Refresh health</button></div>}
     </div>
     {projects.length === 0 ? <p className="empty">Add a project and register a service to start monitoring.</p> : <>
       <div className="health-filter"><label htmlFor="health-project">Project</label>
-        <select id="health-project" value={projectId} onChange={(e) => setSelection(e.target.value)}>
+        <select id="health-project" value={projectId} onChange={(e) => onProjectChange(e.target.value)}>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         {update.data && <span className="muted">Updated <time dateTime={update.data.observed_at}>
