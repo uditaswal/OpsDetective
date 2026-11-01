@@ -55,10 +55,13 @@ jobs:
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
+      - run: npm run test:artifact-safety
+        working-directory: apps/web
       - run: npm run test:browser
         working-directory: apps/web
         env:
           TEST_ENV_FILE: ${{ runner.temp }}/opsdetective-ci.env
+          TEST_COMPOSE_PROJECT: opsdetective-ci
       - if: always()
         run: |
           if [ -f "$RUNNER_TEMP/opsdetective-ci.env" ]; then
