@@ -364,8 +364,8 @@ code { font-size:.9em; }
 .host-panel p { font-size:14px; line-height:1.6; }
 .host-panel code { overflow-wrap:anywhere; }
 .host-state { font-weight:600; }
-.host-signals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; margin:20px 0; }
+.host-signals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; margin:20px 0; }
 .host-signals dt,.host-signals small { font-size:14px; color:#566461; }
 .host-signals dd { margin:8px 0; font-size:26px; font-variant-numeric:tabular-nums; }
 .host-signals small { display:block; line-height:1.5; }
-@media(max-width:480px) { .host-panel { padding:20px; } .host-signals { gap:16px; } }
+@media(max-width:480px) { .host-panel { padding:20px; } .host-signals { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; } .host-signals > :last-child { grid-column:1 / -1; } }

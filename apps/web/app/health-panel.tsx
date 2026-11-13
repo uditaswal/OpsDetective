@@ -9,7 +9,7 @@ type ServiceHealth = {
   status: "healthy" | "degraded" | "disconnected";
   collection_status: "connected" | "stale" | "unavailable" | "waiting";
   request_rate_per_minute: number | null; error_rate_percent: number | null;
-  latency_p95_ms: number | null; availability: boolean | null;
+  latency_p50_ms: number | null; latency_p95_ms: number | null; availability: boolean | null;
   last_seen_at: string | null; freshness_seconds: number | null; reasons: string[];
 };
 type Snapshot = {
@@ -155,7 +155,7 @@ export function HealthPanel({ projects, revision, selectedProjectId, onProjectCh
             <span className={`health-status ${status}`}>{status === "healthy" ? "Healthy" : status === "degraded" ? "Degraded" : "Disconnected"}</span></div>
           <dl className="signals"><div><dt>Requests / min</dt><dd>{number(service.request_rate_per_minute, "")}</dd></div>
             <div><dt>5xx errors</dt><dd>{number(service.error_rate_percent, "%")}</dd></div>
-            <div><dt>Latency p95</dt><dd>{number(service.latency_p95_ms, " ms")}</dd><small>Bucket-approximated</small></div>
+            <div><dt>Latency p50 / p95</dt><dd>{number(service.latency_p50_ms, "")} / {number(service.latency_p95_ms, " ms")}</dd><small>Bucket-approximated</small></div>
             <div><dt>Uptime probe</dt><dd>{service.availability === null ? "Unknown" : service.availability ? "Passing" : "Failing"}</dd></div></dl>
           <div className="collection-row"><p><strong>Collection:</strong> {collection}</p>
             <p className="muted">Last seen: {service.last_seen_at ? <time dateTime={service.last_seen_at}>{new Date(service.last_seen_at).toLocaleString()}</time> : service.collection_status === "unavailable" ? "Unknown" : "No recent samples"}</p></div>

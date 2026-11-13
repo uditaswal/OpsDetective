@@ -49,7 +49,7 @@ test("service health separates measured failures, collection failures and pollin
     policy: { stale_seconds: 60, error_rate_percent: 5, latency_p95_ms: 500, window_seconds: 120 },
     services: [{ ...service, status, collection_status: status === "disconnected" ? "unavailable" : "connected",
       request_rate_per_minute: status === "disconnected" ? null : 30, error_rate_percent: status === "disconnected" ? null : status === "degraded" ? 20 : 0,
-      latency_p95_ms: status === "disconnected" ? null : 12, availability: null,
+      latency_p50_ms: status === "disconnected" ? null : 7, latency_p95_ms: status === "disconnected" ? null : 12, availability: null,
       last_seen_at: status === "disconnected" ? null : new Date().toISOString(), freshness_seconds: status === "disconnected" ? null : 0,
       reasons: status === "disconnected" ? ["Metric collection is unavailable; application health is unknown."] : [],
     }],
@@ -61,7 +61,12 @@ test("service health separates measured failures, collection failures and pollin
   await expect(page.getByText("Polling every 10 seconds", { exact: true })).toBeVisible();
   await expect(card.getByText("Healthy", { exact: true })).toBeVisible();
   await expect(card.getByText("0%", { exact: true })).toBeVisible();
+  await expect(card.getByText("7 / 12 ms", { exact: true })).toBeVisible();
   await expect(card.getByText("Bucket-approximated", { exact: true })).toBeVisible();
+  if (process.env.TEST_SCREENSHOT_DIR) {
+    mkdirSync(process.env.TEST_SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot({ path: join(process.env.TEST_SCREENSHOT_DIR, `health-values-${info.project.name}.png`), fullPage: true });
+  }
   status = "degraded";
   await page.clock.fastForward(10000);
   await expect(card.getByText("Degraded", { exact: true })).toBeVisible({ timeout: 15000 });

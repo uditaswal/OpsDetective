@@ -10,8 +10,8 @@ OpsDetective brings a web interface, API, ingest gateway, OpenTelemetry Collecto
 - **Guided connections:** register a service, manage create-once ingestion tokens, configure its SDK, and verify received request metrics from the interface.
 - **Authenticated ingest:** create-once service tokens, keyed-digest storage, revocation, and an OTLP/HTTP gateway that verifies each bearer token before forwarding to the private Collector.
 - **Private metric storage:** authenticated OTLP metrics retain tenant, project and service identity in Prometheus. Host metrics and a restricted demo uptime probe run in the core stack.
-- **Service health:** project-scoped cards show request rate, 5xx errors, bucket-approximated latency p95, uptime probes and freshness. Collection failures appear separately, with live updates and polling fallback.
-- **Host resources:** an operator-assigned monitoring host shows CPU, memory and source freshness within its owning project, separate from application health.
+- **Service health:** project-scoped cards show request rate, 5xx errors, bucket-approximated latency p50 and p95, uptime probes and freshness. Collection failures appear separately, with live updates and polling fallback.
+- **Host resources:** an operator-assigned monitoring host shows CPU, memory, disk I/O activity and source freshness within its owning project, separate from application health. Disk capacity is not collected.
 - **Synthetic telemetry:** a demo service generates order requests and exposes health and Prometheus metrics without requiring customer data.
 - **Operational checks:** GitHub Actions runs Python and web checks, Compose integration, secret scanning, and CodeQL. The integration check exercises token creation, accepted ingest, revocation, and rejection after the gateway cache expires.
 
