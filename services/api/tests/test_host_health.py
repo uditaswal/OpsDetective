@@ -13,7 +13,7 @@ from app.scope import scoped_select
 
 def host_vector(**changes) -> list[dict]:
     now = time.time()
-    values = {"cpu": 25, "total": 8 * 1024**3, "available": 2 * 1024**3,
+    values = {"cpu": 25, "disk_busy": 12, "total": 8 * 1024**3, "available": 2 * 1024**3,
               "up": 1, "last_seen": now - 1, **changes}
     if values["last_seen"] == "stale":
         values["last_seen"] = now - 90
@@ -41,6 +41,7 @@ def test_host_is_unavailable_without_explicit_owned_assignment(workspace, monkey
     assert data["host_id"] == host_id and data["project_id"] == projects[0]
     assert data["status"] == "connected" and data["cpu_usage_percent"] == 25
     assert data["memory_usage_percent"] == 75
+    assert data["disk_busy_percent"] == 12
     assert data["memory_used_bytes"] == 6 * 1024**3
     assert len(queries) == 1 and queries[0] == host_health.HOST_QUERY
     assert client.get(f"/api/v1/projects/{projects[1]}/host").json()["status"] == "unassigned"
@@ -88,6 +89,7 @@ def test_host_invalid_or_stale_samples_never_show_resource_usage(monkeypatch, ch
     result = host_health.host_snapshot("project", "host")
     assert result.status == status
     assert result.cpu_usage_percent is None and result.memory_usage_percent is None
+    assert result.disk_busy_percent is None
     assert result.memory_used_bytes is None and result.memory_total_bytes is None
 
 
@@ -96,9 +98,10 @@ def test_host_cpu_warmup_zero_and_collection_errors(monkeypatch):
     warmup = host_health.host_snapshot("project", "host")
     assert warmup.status == "connected" and warmup.cpu_usage_percent is None
     assert warmup.memory_usage_percent == 75
-    monkeypatch.setattr(host_health, "read_metrics", lambda _: host_vector(cpu=0, available=8 * 1024**3))
+    monkeypatch.setattr(host_health, "read_metrics", lambda _: host_vector(cpu=0, disk_busy=0, available=8 * 1024**3))
     idle = host_health.host_snapshot("project", "host")
     assert idle.status == "connected" and idle.cpu_usage_percent == 0 and idle.memory_usage_percent == 0
+    assert idle.disk_busy_percent == 0
     monkeypatch.setattr(host_health, "read_metrics", lambda _: host_vector() * 2)
     assert host_health.host_snapshot("project", "host").status == "unavailable"
 
@@ -107,3 +110,11 @@ def test_host_cpu_warmup_zero_and_collection_errors(monkeypatch):
 
     monkeypatch.setattr(host_health, "read_metrics", outage)
     assert host_health.host_snapshot("project", "host").status == "unavailable"
+
+
+@pytest.mark.parametrize("disk_busy", [None, float("nan"), -1, 101])
+def test_disk_warmup_or_invalid_value_stays_unknown(monkeypatch, disk_busy):
+    monkeypatch.setattr(host_health, "read_metrics", lambda _: host_vector(disk_busy=disk_busy))
+    result = host_health.host_snapshot("project", "host")
+    assert result.status == "connected" and result.disk_busy_percent is None
+    assert result.memory_usage_percent == 75

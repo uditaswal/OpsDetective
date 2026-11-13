@@ -7,7 +7,7 @@ type Host = {
   project_id: string; host_id: string | null;
   status: "unassigned" | "connected" | "waiting" | "stale" | "unavailable";
   observed_at: string; last_seen_at: string | null; freshness_seconds: number | null; stale_seconds: number;
-  cpu_usage_percent: number | null; memory_usage_percent: number | null;
+  cpu_usage_percent: number | null; disk_busy_percent: number | null; memory_usage_percent: number | null;
   memory_used_bytes: number | null; memory_total_bytes: number | null; detail: string;
 };
 type Update = { project: string; data?: Host; receivedAt?: number; error?: string };
@@ -67,6 +67,8 @@ export function HostPanel({ projectId }: { projectId: string }) {
         <div><dt>Memory usage</dt><dd>{percent(measured ? data?.memory_usage_percent : null)}</dd>
           <small>{measured && data?.memory_used_bytes != null && data.memory_total_bytes != null
             ? `${gib(data.memory_used_bytes)} of ${gib(data.memory_total_bytes)}` : "Used / total unknown"}</small></div>
+        <div><dt>Disk I/O busy</dt><dd>{percent(measured ? data?.disk_busy_percent : null)}</dd>
+          <small>Busiest device, two-minute average; not disk capacity</small></div>
       </dl>}
       {data && <p className="muted">{delayed || stale ? "Fresh host updates are unavailable; resource usage is unknown." : data.detail}</p>}
       {data?.status === "unassigned" && <p className="muted">Project ID for operator setup: <code>{projectId}</code></p>}

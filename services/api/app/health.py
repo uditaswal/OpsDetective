@@ -23,6 +23,7 @@ class ServiceHealth(ServiceOut):
     collection_status: Literal["connected", "stale", "unavailable", "waiting"] = "waiting"
     request_rate_per_minute: float | None = None
     error_rate_percent: float | None = None
+    latency_p50_ms: float | None = None
     latency_p95_ms: float | None = None
     availability: bool | None = None
     last_seen_at: datetime | None = None
@@ -52,6 +53,7 @@ def health_query(tenant_id: str, project_id: str, services: list[ServiceOut]) ->
     expressions = {
         "requests": f"sum by (service_id) (rate({counter}[2m]))",
         "errors": f'sum by (service_id) (rate(demo_http_requests_total{{{selector},http_response_status_code=~"5.."}}[2m]))',
+        "p50": f"histogram_quantile(0.50, sum by (service_id, le) (rate(demo_http_duration_seconds_bucket{{{selector}}}[2m])))",
         "p95": f"histogram_quantile(0.95, sum by (service_id, le) (rate(demo_http_duration_seconds_bucket{{{selector}}}[2m])))",
         "last_seen": f"max by (service_id) (max_over_time(timestamp({counter})[5m:15s]))",
         "collector": 'up{job="otlp",instance="collector:8889",tenant_id="",project_id="",service_id=""}',
@@ -80,7 +82,7 @@ def read_metrics(query: str) -> list[dict]:
     if result.get("status") != "success" or result.get("warnings") or result["data"].get("resultType") != "vector":
         raise ValueError("Metric response is incomplete")
     rows = result["data"].get("result")
-    if not isinstance(rows, list) or len(rows) > 504:
+    if not isinstance(rows, list) or len(rows) > 604:
         raise ValueError("Invalid metric vector")
     for row in rows:
         if (not isinstance(row, dict) or not isinstance(row.get("metric"), dict)
@@ -129,11 +131,13 @@ def classify(service: ServiceOut, values: dict[str, float], infrastructure: dict
     health.collection_status = "connected"
     requests = values.get("requests")
     errors = values.get("errors", 0)
-    p95 = values.get("p95")
+    p50, p95 = values.get("p50"), values.get("p95")
     if requests is not None and requests >= 0:
         health.request_rate_per_minute = round(requests * 60, 2)
         if requests > 0 and 0 <= errors <= requests:
             health.error_rate_percent = round(errors / requests * 100, 2)
+    if p50 is not None and p50 >= 0:
+        health.latency_p50_ms = round(p50 * 1000, 2)
     if p95 is not None and p95 >= 0:
         health.latency_p95_ms = round(p95 * 1000, 2)
     if service.probe_name == "demo":

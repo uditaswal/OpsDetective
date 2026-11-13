@@ -6,11 +6,15 @@ import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 
-test("the demo SDK reaches real health cards and separates application from collection failure", async ({ page }, info) => {
+test("the demo SDK reaches real health cards and separates application from collection failure", { tag: "@live-monitor" }, async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Shared demo lifecycle runs once; responsive states have separate coverage");
   test.setTimeout(720000);
   const project = process.env.TEST_COMPOSE_PROJECT;
   const file = process.env.TEST_ENV_FILE;
+  const started = Number(process.env.TEST_STACK_STARTED_AT);
+  if (!Number.isSafeInteger(started) || started <= 0 || started > Date.now() || Date.now() - started >= 300000) {
+    throw new Error("The live M1 gate requires a fresh Compose-start timestamp in TEST_STACK_STARTED_AT");
+  }
   if (!project || !/^opsdetective-(ci|gate)(-[a-z0-9]+)?$/.test(project) || !file || basename(file) !== `${project}.env`) {
     throw new Error("The live M1 gate requires an explicitly named disposable Compose project and matching generated environment");
   }
@@ -77,7 +81,6 @@ test("the demo SDK reaches real health cards and separates application from coll
     const name = `Live synthetic orders ${Date.now()}`;
     await setup.getByLabel("Service name", { exact: true }).fill(name);
     const registered = page.waitForResponse((response) => response.url().endsWith("/api/v1/services") && response.request().method() === "POST");
-    const started = Date.now();
     await setup.getByRole("button", { name: "Register and continue", exact: true }).click();
     const service: { id: string; project_id: string } = await (await registered).json().catch(() => { throw new Error("Service response unreadable"); });
     serviceId = service.id;
@@ -98,7 +101,8 @@ test("the demo SDK reaches real health cards and separates application from coll
     const values = await card.locator(".signals dd").allTextContents();
     expect(Number.parseFloat(values[0]) > 0).toBe(true);
     expect(Number.parseFloat(values[1])).toBe(0);
-    expect(Number.parseFloat(values[2]) > 0 && Number.parseFloat(values[2]) < 500).toBe(true);
+    const [p50, p95] = values[2].split("/").map((value) => Number.parseFloat(value));
+    expect(p50 > 0 && p50 <= p95 && p95 < 500).toBe(true);
     await expect(card.getByText("Passing", { exact: true })).toBeVisible();
     await expect(card.getByText("Collection: Connected", { exact: true })).toBeVisible();
     expect(Date.now() - started).toBeLessThan(300000);

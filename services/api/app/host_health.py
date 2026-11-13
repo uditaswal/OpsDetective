@@ -13,6 +13,7 @@ HOST_QUERY = " or ".join(
     f'label_replace(({expression}), "signal", "{signal}", "", "")'
     for signal, expression in {
         "cpu": f'100 * (1 - avg(rate(node_cpu_seconds_total{{{SELECTOR},mode="idle"}}[2m])))',
+        "disk_busy": f"100 * max(rate(node_disk_io_time_seconds_total{{{SELECTOR}}}[2m]))",
         "total": f"max(node_memory_MemTotal_bytes{{{SELECTOR}}})",
         "available": f"max(node_memory_MemAvailable_bytes{{{SELECTOR}}})",
         "up": f"up{{{SELECTOR}}}",
@@ -31,6 +32,7 @@ class HostHealth(BaseModel):
     freshness_seconds: float | None = None
     stale_seconds: int
     cpu_usage_percent: float | None = Field(default=None, ge=0, le=100)
+    disk_busy_percent: float | None = Field(default=None, ge=0, le=100)
     memory_usage_percent: float | None = Field(default=None, ge=0, le=100)
     memory_total_bytes: int | None = Field(default=None, gt=0)
     memory_used_bytes: int | None = Field(default=None, ge=0)
@@ -51,12 +53,12 @@ def host_snapshot(project_id: str, host_id: str) -> HostHealth:
             signal = row["metric"].get("signal")
             timestamp, raw = row["value"]
             value = float(raw)
-            if signal not in {"cpu", "total", "available", "up", "last_seen"} or signal in values:
+            if signal not in {"cpu", "disk_busy", "total", "available", "up", "last_seen"} or signal in values:
                 raise ValueError("Unexpected host signal")
             if not 0 <= now.timestamp() - float(timestamp) <= 30:
                 continue
             if not math.isfinite(value):
-                if signal == "cpu":
+                if signal in {"cpu", "disk_busy"}:
                     continue
                 raise ValueError("Invalid host signal")
             values[signal] = value
@@ -84,6 +86,9 @@ def host_snapshot(project_id: str, host_id: str) -> HostHealth:
         result.memory_used_bytes = int(total - available)
         result.memory_usage_percent = round(100 * (total - available) / total, 1)
         result.cpu_usage_percent = round(cpu, 1) if cpu is not None else None
+        disk_busy = values.get("disk_busy")
+        if disk_busy is not None and 0 <= disk_busy <= 100:
+            result.disk_busy_percent = round(disk_busy, 1)
         result.status = "connected"
         result.detail = ("Whole monitoring host usage, including other processes. CPU uses a two-minute average."
                          if cpu is not None else "Memory samples are fresh. Waiting for enough CPU samples for a two-minute average.")

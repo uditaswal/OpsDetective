@@ -106,7 +106,7 @@ if EXPECT_COLLECTION_FAILURE:
 else:
     data = wait_for(lambda row: row['status'] == 'healthy')
     assert data['collection_status'] == 'connected' and data['availability'] is True, 'Configured probe or collection was not available'
-    assert data['request_rate_per_minute'] > 0 and data['latency_p95_ms'] < 500
+    assert data['request_rate_per_minute'] > 0 and 0 <= data['latency_p50_ms'] <= data['latency_p95_ms'] < 500
     started = time.monotonic()
     call('/api/v1/projects/' + PROJECT_ID + '/health')
     assert time.monotonic() - started < 2, 'Dashboard health request exceeded two seconds'

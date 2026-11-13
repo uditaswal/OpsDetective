@@ -33,19 +33,20 @@ try:
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         data = call(path)
-        if data["status"] == "connected" and data["cpu_usage_percent"] is not None:
+        if data["status"] == "connected" and data["cpu_usage_percent"] is not None and data["disk_busy_percent"] is not None:
             assert data["host_id"] and data["project_id"] == project
             assert 0 <= data["cpu_usage_percent"] <= 100
+            assert 0 <= data["disk_busy_percent"] <= 100
             assert 0 <= data["memory_usage_percent"] <= 100
             assert 0 <= data["memory_used_bytes"] <= data["memory_total_bytes"]
             assert data["last_seen_at"] and data["freshness_seconds"] <= data["stale_seconds"]
             break
         time.sleep(2)
     else:
-        raise AssertionError("Fresh CPU and memory samples were not available for the assigned host")
+        raise AssertionError("Fresh CPU, memory and disk activity samples were not available for the assigned host")
     assert call(f"/projects/{other}/host")["status"] == "unassigned"
 finally:
     with SessionLocal() as db:
         unassign(db, tenant, project)
 assert call(path)["status"] == "unassigned"
-print("Compose scoped host CPU/memory and operator-assignment check passed")
+print("Compose scoped host CPU/memory/disk activity and operator-assignment check passed")

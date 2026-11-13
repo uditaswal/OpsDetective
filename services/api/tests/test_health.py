@@ -18,9 +18,9 @@ from app.security import digest
 
 
 def vector(service_id: str, *, age: int = 1, rate: float = 0.5, errors: float = 0,
-           p95: float = 0.02, collector: int = 1, probe: int = 1) -> list[dict]:
+           p50: float = 0.01, p95: float = 0.02, collector: int = 1, probe: int = 1) -> list[dict]:
     now = time.time()
-    data = {"requests": rate, "errors": errors, "p95": p95, "last_seen": now - age}
+    data = {"requests": rate, "errors": errors, "p50": p50, "p95": p95, "last_seen": now - age}
     rows = [{"metric": {"service_id": service_id, "signal": key}, "value": [now, str(value)]}
             for key, value in data.items()]
     rows.extend({"metric": {"signal": key}, "value": [now, str(value)]}
@@ -34,7 +34,7 @@ def test_health_is_authenticated_and_queries_only_owned_project(workspace, monke
 
     def read(query):
         queries.append(query)
-        return vector(services[0]) + vector(services[1])[:4] + vector(services[2])[:4]
+        return vector(services[0]) + vector(services[1])[:5] + vector(services[2])[:5]
 
     monkeypatch.setattr(health, "read_metrics", read)
     with TestClient(app) as anonymous:
@@ -49,10 +49,12 @@ def test_health_is_authenticated_and_queries_only_owned_project(workspace, monke
     assert result["services"][0]["status"] == "healthy"
     assert result["services"][0]["request_rate_per_minute"] == 30
     assert result["services"][0]["latency_p95_ms"] == 20
+    assert result["services"][0]["latency_p50_ms"] == 10
     assert result["services"][0]["error_rate_percent"] == 0
     assert result["services"][0]["availability"] is True
     assert result["policy"]["window_seconds"] == 120
     assert 'tenant_id="tenant-a"' in queries[0]
+    assert "histogram_quantile(0.50" in queries[0]
     assert f'project_id="{projects[0]}"' in queries[0]
     assert services[1] not in queries[0] and projects[1] not in queries[0]
     assert services[2] not in queries[0]
@@ -82,6 +84,7 @@ def test_health_does_not_conflate_app_failures_and_collection(workspace, monkeyp
     if collection in ("stale", "unavailable", "waiting"):
         assert result["error_rate_percent"] is None
         assert result["latency_p95_ms"] is None
+        assert result["latency_p50_ms"] is None
         assert result["availability"] is None
 
 
@@ -127,6 +130,16 @@ def test_unassigned_probe_stays_unknown_without_hiding_measured_health():
     result = health.classify(ref, values, {"collector": 1}, datetime.now(timezone.utc), health.policy())
     assert result.status == "healthy"
     assert result.availability is None
+
+
+def test_missing_or_invalid_p50_stays_unknown_without_changing_p95_health(workspace, monkeypatch):
+    client, _, _, services = workspace
+    rows = vector(services[0], p50=float("nan"))
+    monkeypatch.setattr(health, "read_metrics", lambda _: rows)
+    result = client.get(f"/api/v1/services/{services[0]}/health").json()
+    assert result["latency_p50_ms"] is None
+    assert result["latency_p95_ms"] == 20
+    assert result["status"] == "healthy"
 
 
 def test_sse_rechecks_session_and_releases_stream_after_logout(workspace, monkeypatch):
@@ -216,7 +229,7 @@ def test_connection_checks_received_metrics_not_application_health(workspace, mo
     client, _, _, services = workspace
     headers = {"X-CSRF-Token": client.cookies["csrf_token"]}
     assert client.post(f"/api/v1/services/{services[0]}/tokens", headers=headers).status_code == 201
-    data = vector(services[0])[4:] if rows == "empty" else vector(services[0], age=90 if rows == "stale" else 1,
+    data = vector(services[0])[5:] if rows == "empty" else vector(services[0], age=90 if rows == "stale" else 1,
             collector=0 if rows == "outage" else 1, errors=.1 if rows == "degraded" else 0)
     monkeypatch.setattr(health, "read_metrics", lambda _: data)
     result = client.post(f"/api/v1/services/{services[0]}/connection-test", json={}, headers=headers)

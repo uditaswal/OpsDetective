@@ -43,12 +43,14 @@ test("host resources keep project scope and hide stale or failed measurements", 
     observed_at: new Date().toISOString(), last_seen_at: new Date(Date.now() - (state === "stale" ? 90000 : 1000)).toISOString(),
     freshness_seconds: state === "stale" ? 90 : 1, stale_seconds: 60,
     cpu_usage_percent: state === "connected" ? 25 : null, memory_usage_percent: state === "connected" ? 75 : null,
+    disk_busy_percent: state === "connected" ? 12 : null,
     memory_used_bytes: state === "connected" ? 6 * 1024 ** 3 : null, memory_total_bytes: state === "connected" ? 8 * 1024 ** 3 : null,
     detail: state === "stale" ? "Host samples are stale; resource usage is unknown." : "Whole monitoring host usage, including other processes. CPU uses a two-minute average.",
   } }));
   await host.getByRole("button", { name: "Refresh host", exact: true }).click();
   await expect(host.getByText("25.0%", { exact: true })).toBeVisible();
   await expect(host.getByText("75.0%", { exact: true })).toBeVisible();
+  await expect(host.getByText("12.0%", { exact: true })).toBeVisible();
   await expect(host.getByText("6.0 GiB of 8.0 GiB", { exact: true })).toBeVisible();
   if (process.env.TEST_SCREENSHOT_DIR) {
     mkdirSync(process.env.TEST_SCREENSHOT_DIR, { recursive: true });
@@ -59,6 +61,7 @@ test("host resources keep project scope and hide stale or failed measurements", 
   await expect(host.getByText("Stale", { exact: true })).toBeVisible();
   await expect(host.getByText("25.0%", { exact: true })).toHaveCount(0);
   await expect(host.getByText("75.0%", { exact: true })).toHaveCount(0);
+  await expect(host.getByText("12.0%", { exact: true })).toHaveCount(0);
   state = "error";
   await host.getByRole("button", { name: "Refresh host", exact: true }).click();
   await expect(host.getByRole("alert")).toContainText("Resource usage is unknown");
